@@ -1,13 +1,11 @@
 import math
-import random
 import numpy
-import pandas as pd
-import time
-# Csi = [[random.random(), random.random(), random.random()/4+0.1] for i in range(questoes)]
-# X = [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
 def nota(X, Csi, questoes=45, pontos_de_quadratura=40):
     def P_x_thetaCsi(theta,a,b,c,x):
-        return [1-c-(1-c)/(1+math.exp(-a*(theta-b))), c+(1-c)/(1+math.exp(a*(theta-b)))][x]
+        p =[1-c-(1-c)/(1+math.exp(a*(theta-b))), c+(1-c)/(1+math.exp(a*(theta-b)))][x]
+        if p<0:
+            print(p,theta,a,b,c,x)
+        return p
     def P_xvec_thetaCsi(x, theta, csi):
         p = 1
         for i in range(questoes):
@@ -18,7 +16,8 @@ def nota(X, Csi, questoes=45, pontos_de_quadratura=40):
         Xq, A = numpy.polynomial.legendre.leggauss(pontos_de_quadratura)
         Xq = [Xq[i] for i in range(len(Xq))]
         for i in range(pontos_de_quadratura):
-            n+=Xq[i]*P_xvec_thetaCsi(x, Xq[i],csi)*A[i]
+            n+=(Xq[i]+1)*500*P_xvec_thetaCsi(x, Xq[i],csi)*A[i]
             d+=P_xvec_thetaCsi(x, Xq[i],csi)*A[i] 
+
         return n/d
     return aproxTheta(X, Csi)

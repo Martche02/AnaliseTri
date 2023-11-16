@@ -8,7 +8,6 @@ def criar(agrupamento, Csi, nquest=45, randomico=False):
     from matplotlib.colors import Normalize, to_rgb
     grupo = agrupamento
     Csi = [Csi,[[random.random(), random.random(), random.random()/4+0.1] for i in range(int(45/grupo))]][randomico]
-
     mapa = []
     quest = int(nquest/grupo)
     for i in range(quest):
@@ -43,8 +42,10 @@ def criar(agrupamento, Csi, nquest=45, randomico=False):
     for j in mapa:
         maximo = max(max(i[0] for i in j),maximo)
         minimo = min(min(i[0] for i in j),minimo)
+    print(maximo)
+    print(minimo)
     norm = Normalize(vmin=minimo, vmax=maximo)
-    tamanho = -10
+    tamanho = 10
     # Para cada sub-lista em 'mapa'
     for i, sub_lista in enumerate(mapa):
         # Inicializa a base para o 'empilhamento' dos segmentos
@@ -68,16 +69,16 @@ def criar(agrupamento, Csi, nquest=45, randomico=False):
     ax.set_xlabel('Acertos')
 
     # Cria o ScalarMappable e inicializa com o colormap e o objeto Normalize
-    sm = cm.ScalarMappable(cmap=cmap, norm=norm)
-    sm.set_array([])  # Você pode precisar definir o array se não estiver plotando qualquer mappable.
+    sm = cm.ScalarMappable(cmap=plt.cm.viridis_r, norm=norm)
+    sm.set_array(np.arange(int(maximo), int(minimo), 150))  # Você pode precisar definir o array se não estiver plotando qualquer mappable.
 
     # Adiciona a barra de cores ao gráfico, associada ao eixo ax
     cbar = plt.colorbar(sm, ax=ax)
-    ticks = np.arange(0, 3000, 150)
+    # ticks = np.arange(int(maximo), int(minimo), 150)
     # tick_positions = norm(ticks)
     # cbar.set_ticks(tick_positions)
-    cbar.set_ticklabels(ticks)
-    cbar.set_label('Nota *fora_de_escala', rotation=270, labelpad=15)
+    # cbar.set_ticklabels(ticks)
+    cbar.set_label('Nota', rotation=90, labelpad=15)
     plt.title('Nota por Acerto por Coerência Enem LC 2022')
     plt.gca().set_yticks([])
     normm = Normalize(vmin=0, vmax=1)  # Supondo que os valores de brilho variam de 0 a 1
