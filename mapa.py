@@ -9,6 +9,8 @@ from matplotlib.colors import Normalize, to_rgb
 import time
 import cProfile
 import pstats
+from multiprocessing import Pool
+from multiprocessing import cpu_count
 
 def analizar(fn):
     def wrapper(*args, **kwargs):
@@ -21,8 +23,9 @@ def analizar(fn):
         return result
     return wrapper
 def paralelizar(fn):
-    def wrapper(*args, **kwargs):
-        result = fn(*args, **kwargs)
+    def wrapper(lista_de_args):
+        with Pool(processes=cpu_count()) as pool:
+            result = pool.map(fn, lista_de_args)
         return result
     return wrapper
 # def ma(bit_list):
@@ -50,7 +53,7 @@ def calcular_seta_m0(mapa, i, valor):
             resultados.append(resultado)
     return sorted(resultados, key=lambda x: x[0], reverse=True)[0]
 
-@analizar
+# @analizar
 def criar(agrupamento, Csi, nquest=45, randomico=False):
     Xq, A = leggauss(40)
     db = dict()
@@ -119,30 +122,30 @@ def criar(agrupamento, Csi, nquest=45, randomico=False):
                 seta_m0 = calcular_seta_m0(mapa, i, valor)
                 mapa[i][j][3].append(seta_m0)
             # seta_m0 = max([ sorted(sub_lista, key=lambda x: x[2], reverse=True)[-1+2**len(valor[2])+ma( (valor[2]+np.array([1 if i==n else 0 for i in range(len(valor[2]))])))]    for n in range(len(valor[2])) if valor[2][n] == 0 and  ])
-#     # Configura o eixo x para mostrar um label para cada sub-lista
-#     ax.set_xticks(range(len(mapa)))
-#     ax.set_xticklabels([f'{(i+1)*grupo}' for i in range(len(mapa))])
-#     ax.set_ylabel('Coerência')
-#     ax.set_xlabel('Acertos')
+    # Configura o eixo x para mostrar um label para cada sub-lista
+    ax.set_xticks(range(len(mapa)))
+    ax.set_xticklabels([f'{(i+1)*grupo}' for i in range(len(mapa))])
+    ax.set_ylabel('Coerência')
+    ax.set_xlabel('Acertos')
 
-#     # Cria o ScalarMappable e inicializa com o colormap e o objeto Normalize
-#     sm = cm.ScalarMappable(cmap=plt.cm.viridis_r, norm=norm)
-#     sm.set_array(arange(int(maximo), int(minimo), 150))  # Você pode precisar definir o array se não estiver plotando qualquer mappable.
+    # Cria o ScalarMappable e inicializa com o colormap e o objeto Normalize
+    sm = cm.ScalarMappable(cmap=plt.cm.viridis_r, norm=norm)
+    sm.set_array(arange(int(maximo), int(minimo), 150))  # Você pode precisar definir o array se não estiver plotando qualquer mappable.
 
-#     # Adiciona a barra de cores ao gráfico, associada ao eixo ax
-#     cbar = plt.colorbar(sm, ax=ax)
-#     # ticks = np.arange(int(maximo), int(minimo), 150)
-#     # tick_positions = norm(ticks)
-#     # cbar.set_ticks(tick_positions)
-#     # cbar.set_ticklabels(ticks)
-#     cbar.set_label('Nota', rotation=90, labelpad=15)
-#     plt.title('Nota por Acerto por Coerência Enem LC 2022')
-#     plt.gca().set_yticks([])
-#     normm = Normalize(vmin=0, vmax=1)  # Supondo que os valores de brilho variam de 0 a 1
-#     smm = plt.cm.ScalarMappable(cmap='gray', norm=normm)  # Usando a escala de cinza
-#     smm.set_array([])
-#     plt.colorbar(smm,ax=ax, orientation='vertical', label='Questões Fáceis')
+    # Adiciona a barra de cores ao gráfico, associada ao eixo ax
+    cbar = plt.colorbar(sm, ax=ax)
+    # ticks = np.arange(int(maximo), int(minimo), 150)
+    # tick_positions = norm(ticks)
+    # cbar.set_ticks(tick_positions)
+    # cbar.set_ticklabels(ticks)
+    cbar.set_label('Nota', rotation=90, labelpad=15)
+    plt.title('Nota por Acerto por Coerência Enem LC 2022')
+    plt.gca().set_yticks([])
+    normm = Normalize(vmin=0, vmax=1)  # Supondo que os valores de brilho variam de 0 a 1
+    smm = plt.cm.ScalarMappable(cmap='gray', norm=normm)  # Usando a escala de cinza
+    smm.set_array([])
+    plt.colorbar(smm,ax=ax, orientation='vertical', label='Questões Fáceis')
 
-#     # Mostra o gráfico
-#     plt.savefig('meu_grafico.png')
-    # plt.show()
+    # Mostra o gráfico
+    plt.savefig('meu_grafico.png')
+    plt.show()
