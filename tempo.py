@@ -217,8 +217,52 @@ def carQ(df:pd.DataFrame, X:int, p:bool=False)->float:
     for i in range(1):
         cluster_data = np.column_stack((x_vals, y_vals))
         a,b = fit_and_plot_linear(cluster_data, 
-                            f'Linear Fit for Cluster {i+1}', 
+                            f'Linear Fit for Q {int(np.log2(X)+1)}', 
                             'blue' if i == 0 else 'green', 
                             axs[i] if 1 > 1 else axs)
     plt.show() if p else 0
     return float(a),(float(b)+intercept)/2
+
+### LIXO DO DICIONARIO
+
+
+    # print(achar_melhor_opcao(415549446))
+    # df = pd.read_csv(f"2022dadositens/1087.csv")
+    # column_to_shift = "Angular_C"
+    # # Shift the column
+    # df[column_to_shift] = df[column_to_shift].shift(-1)
+
+    # df.iloc[-1, df.columns.get_loc(column_to_shift)] = df[column_to_shift].iloc[0]
+    # df.to_csv("2022dadositens/1087.csv")
+
+    # addLine(2022, 1087)
+    
+    # carQ(pd.read_csv(f"2022dados/1087.0.csv"), 44, True)
+    # pd.concat([pd.read_csv("2022dadositens/108586.csv"),pd.read_csv("2022dadositens/1087.csv")], ignore_index=True).to_csv("2022dadositens/10858687.csv")
+    # pd.concat([pd.read_csv("2022dados/108586.0.csv"),pd.read_csv("2022dados/1087.0.csv")], ignore_index=True).to_csv("2022dados/10858687.0.csv")
+    # addLine(2022,108586)
+    # addLine(2022,1087)
+    # print(notaProx(118364175,2022,1087))
+    # Apply the aproxNota function to the 'Acertos_Decimal' column
+    
+    
+    # import matplotlib.pyplot as plt
+    # start = 1
+    # end = 45
+
+    # # Generate 400 equally spaced values in the range
+    # x_values = np.linspace(start, end)
+
+    # # Calculate the output for each value
+    # y_values = [aproxNota(int((45-int(x))*'0'+int(x)*'1',2),2022,1087) for x in x_values]
+    # y2_values = [aproxNota(int((int(x))*'1'+(45-int(x))*'0',2),2022,1087) for x in x_values]
+
+    # # Plotting
+    # plt.figure(figsize=(12, 6))
+    # plt.plot(x_values, y_values, y2_values, label='aproxNota(x)')
+    # plt.xlabel('Input Value')
+    # plt.ylabel('Output Value')
+    # plt.title('Function Behavior of aproxNota')
+    # plt.legend()
+    # plt.grid(True)
+    # plt.show()

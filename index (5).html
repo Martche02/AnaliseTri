@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Enem Fora da Caixa</title>
+    <style>
+        body { font-family: Arial, sans-serif; font-size: 12px; margin: 0; padding: 0; }
+        .main-container { display: flex; }
+        .tables-container { display: flex; flex-wrap: wrap; }
+        .table-container { margin-right: 10px; }
+        table { border-collapse: collapse; }
+        th, td { border: 1px solid black; padding: 4px; text-align: center; }
+        th { background-color: #f2f2f2; }
+        .results-container { margin-left: 20px; flex-grow: 1; display: flex; flex-direction: column; align-items: center; }
+        .question-number { width: 50px; }
+        .option { width: 30px; }
+        .custom-radio {
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            border-radius: 50%;
+            width: 15px;
+            height: 15px;
+            border: 1px solid #999;
+            outline: none;
+            transition: background 0.2s ease;
+        }
+        .custom-radio:checked {
+            background-color: black;
+        }
+        #notaEstudante {
+            font-size: 24px;
+            font-weight: bold;
+            margin: 20px 0;
+        }
+        .tabelas-opcoes-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px;
+        }
+        .tabela-opcoes {
+            border-collapse: collapse;
+            margin-bottom: 10px;
+        }
+        .tabela-opcoes th, .tabela-opcoes td {
+            border: 1px solid #ddd;
+            padding: 4px;
+            text-align: center;
+        }
+        .button-corrigir {
+            padding: 10px 20px;
+            font-size: 18px;
+            width: 100%;
+            margin-top: 20px;
+        }
+        .main-container {
+    height: 90vh; /* Faz com que o contêiner principal ocupe toda a altura da viewport */
+    }
+    
+    .tables-container {
+        height: 90%; /* Faz com que o contêiner das tabelas de marcação ocupe toda a altura do contêiner pai */
+        align-items: stretch; /* Estica os filhos para ocupar a altura total */
+    }
+    
+    .table-container {
+        display: flex;
+        flex-direction: column; /* Organiza os elementos da tabela em uma coluna */
+        justify-content: space-between; /* Distribui o espaço igualmente */
+    }
+    
+    table {
+        flex-grow: 1; /* Faz com que as tabelas cresçam para ocupar o espaço disponível */
+        margin-bottom: 10px; /* Espaço entre as tabelas */
+    }
+    
+    .results-container {
+        height: 88%; /* Faz com que o contêiner de resultados ocupe toda a altura do contêiner pai */
+        justify-content: space-between; /* Distribui o espaço igualmente entre os elementos do contêiner */
+    }
+    
+    .tabelas-opcoes-container {
+        flex-grow: 1; /* Faz com que as subtabelas de opções cresçam para ocupar o espaço disponível */
+    }
+    </style>
+</head>
+<body>
+    <h1 style= 'text-align: center;'>Enem Fora da Caixa - Simulado 2022 CN Cinza</h1>
+
+    <div class="main-container">
+        <div class="tables-container" id="tablesContainer">
+            <!-- Tabelas de questões serão inseridas aqui pelo JavaScript -->
+        </div>
+        <div class="results-container" id="resultsContainer">
+            <p id="notaEstudante" style="display: none;">Nota: 0</p>
+            <div class="tabelas-opcoes-container" id="tabelasOpcoes">
+                <!-- Subtabelas de opções serão adicionadas aqui -->
+            </div>
+            <button class="button-corrigir" onclick="corrigirSimulado()">Corrigir Simulado</button>
+        </div>
+    </div>
+
+    <script>
+            function createTable(start, end) {
+            var tableContainer = document.createElement('div');
+            tableContainer.className = 'table-container';
+
+            var table = document.createElement('table');
+            var thead = table.createTHead();
+            var row = thead.insertRow();
+            ['Questão', 'A', 'B', 'C', 'D', 'E'].forEach(function(text) {
+                var th = document.createElement('th');
+                th.appendChild(document.createTextNode(text));
+                th.className = text === 'Questão' ? 'question-number' : 'option';
+                row.appendChild(th);
+            });
+
+            for (var i = start; i <= end; i++) {
+                var tbodyRow = table.insertRow();
+                var cell1 = tbodyRow.insertCell(0);
+                cell1.innerHTML = i;
+                var lastChecked = null;
+                ['A', 'B', 'C', 'D', 'E'].forEach(function(letter) {
+                    var cell = tbodyRow.insertCell();
+                    var radioBtn = document.createElement("input");
+                    radioBtn.type = "radio";
+                    radioBtn.name = "q" + i;
+                    radioBtn.value = letter;
+                    radioBtn.className = 'custom-radio';
+                    radioBtn.onclick = function() {
+                        if (lastChecked === this) {
+                            this.checked = false;
+                            lastChecked = null;
+                        } else {
+                            lastChecked = this;
+                        }
+                    };
+                    cell.appendChild(radioBtn);
+                });
+            }
+
+            tableContainer.appendChild(table);
+            return tableContainer;
+        }
+
+        window.onload = function() {
+            var tablesContainer = document.querySelector('.tables-container');
+            for (var i = 1; i <= 45; i += 15) {
+                tablesContainer.appendChild(createTable(i, i + 14));
+            }
+        };
+
+        // Funções fictícias (BaterGabarito, Nota, AcharMelhorOpcao)
+        // ...
+            var gabarito = "DDECDBEACCAEBEAEBBCCDDCBDDACBEACEABCEABEDADBA";
+
+        function baterGabaritoComRespostas() {
+            var resultados = "";
+            for (var i = 1; i <= 45; i++) {
+                var questaoMarcada = document.querySelector('input[name="q' + i + '"]:checked');
+                var resposta = questaoMarcada ? questaoMarcada.value : "";
+                resultados += resposta === gabarito[i - 1] ? "1" : "0";
+            }
+            return parseInt(resultados, 2);
+        }
+        function aproxNota(serial) {
+        var inf = 360.6;
+        var Angular_C = [0.03, -0.04, -0.03, 0.03, 0.06, 0.08, 0.09, 0.04, 0.08, 0.03, 0.08, -0.02, 0.08, 0.08, 0.06, -0.07, 0.14, 0.07, 0.11, 0.11, 0.06, -0.08, -0.04, 0.06, 0.09, -0.03, 0.01, 0.01, -0.06, 0.07, 0.11, 0.03, 0.01, 0.09, 0.18, 0.07, 0.15, -0.09, -0.03, 0.26, -0.13, -0.08, 0.06, 0.09, 0.03];
+        var Linear_C = [-4.57, 19.77, 46.59, -7.24, -11.33, -21.9, -21.71, -7.33, -19.4, 1.45, -4.72, 6.25, -11.61, -8.86, -18.8, 23.54, -15.46, -3.11, -14.44, -31.76, -18.78, 18.96, 22.67, 4.7, -11.41, 30.24, 17.15, -3.58, 14.4, -9.44, -27.0, -9.25, -2.15, -3.76, -49.6, -20.9, -45.46, 31.79, 34.43, -74.79, 56.21, 77.16, -11.87, -18.06, -4.57];
+        var num = 0, den = 0;
+    
+        var serialBin = serial.toString(2).padStart(45, '0');
+        for (var idx = 0; idx < 45; idx++) {
+            var n = parseInt(serialBin[idx]);
+            num += n * Linear_C[idx] / (Angular_C[idx] + 1);
+            den += n * Angular_C[idx] / (Angular_C[idx] + 1);
+        }
+    
+        return (num + inf) / (1 - den);
+        }
+
+        function acharMelhorOpcao(serial) {
+        var nota = aproxNota(serial);
+        var vet = serial.toString(2).padStart(45, '0');
+        var Angular_C = [0.03, -0.04, -0.03, 0.03, 0.06, 0.08, 0.09, 0.04, 0.08, 0.03, 0.08, -0.02, 0.08, 0.08, 0.06, -0.07, 0.14, 0.07, 0.11, 0.11, 0.06, -0.08, -0.04, 0.06, 0.09, -0.03, 0.01, 0.01, -0.06, 0.07, 0.11, 0.03, 0.01, 0.09, 0.18, 0.07, 0.15, -0.09, -0.03, 0.26, -0.13, -0.08, 0.06, 0.09, 0.03];
+        var Linear_C = [-4.57, 19.77, 46.59, -7.24, -11.33, -21.9, -21.71, -7.33, -19.4, 1.45, -4.72, 6.25, -11.61, -8.86, -18.8, 23.54, -15.46, -3.11, -14.44, -31.76, -18.78, 18.96, 22.67, 4.7, -11.41, 30.24, 17.15, -3.58, 14.4, -9.44, -27.0, -9.25, -2.15, -3.76, -49.6, -20.9, -45.46, 31.79, 34.43, -74.79, 56.21, 77.16, -11.87, -18.06, -4.57];
+        var opcoes = [];
+    
+        for (var i = 0; i < 45; i++) {
+            var valor = Math.abs((Angular_C[i] * nota + Linear_C[i]) * (1-parseInt(vet[i])));
+            if (valor != 0) {
+                opcoes.push([i + 1, valor]);
+            }
+        }
+    
+        opcoes.sort(function(a, b) {
+            return b[1] - a[1];
+        });
+    
+        return opcoes;
+        }
+       function corrigirSimulado() {
+    // Calcula o número serial com base nas respostas marcadas
+    var serial = baterGabaritoComRespostas(); // Supondo que esta função retorna o serial
+
+    // Chama aproxNota e exibe a nota
+    var nota = aproxNota(serial);
+    var notaElement = document.getElementById('notaEstudante');
+    notaElement.textContent = 'Nota: ' + nota.toFixed(2);
+
+    // Torna o elemento da nota visível
+    notaElement.style.display = 'block';
+    // Chama acharMelhorOpcao e exibe a tabela de opções
+    var opcoes = acharMelhorOpcao(serial);
+    atualizarTabelaOpcoes(opcoes);
+    }
+    
+    function atualizarTabelaOpcoes(opcoes) {
+    var tabelasOpcoesContainer = document.getElementById('tabelasOpcoes');
+    tabelasOpcoesContainer.innerHTML = ''; // Limpa as subtabelas anteriores
+
+    var tamanhoSubtabela = 15; // Número de itens por subtabela
+    opcoes.forEach(function(opcao, index) {
+        // Cria uma nova subtabela para cada grupo de 10 opções
+        if (index % tamanhoSubtabela === 0) {
+            var subtabela = document.createElement('table');
+            subtabela.className = 'tabela-opcoes';
+
+            var thead = subtabela.createTHead();
+            var row = thead.insertRow();
+            ['Questão', 'Ganho de Pontuação'].forEach(function(text) {
+                var th = document.createElement('th');
+                th.textContent = text;
+                row.appendChild(th);
+            });
+
+            tabelasOpcoesContainer.appendChild(subtabela);
+        }
+
+        // Adiciona a linha atual à última subtabela criada
+        var tbody = tabelasOpcoesContainer.lastChild.tBodies[0] || tabelasOpcoesContainer.lastChild.createTBody();
+        var tbodyRow = tbody.insertRow();
+        var cellQuestao = tbodyRow.insertCell(0);
+        var cellGanho = tbodyRow.insertCell(1);
+        cellQuestao.textContent = opcao[0];
+        cellGanho.textContent = '+ '+opcao[1].toFixed(2);
+    });
+}
+    </script>
+</body>
+</html>

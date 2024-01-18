@@ -4,7 +4,11 @@ from multiprocessing import Pool
 from tempo import carQ
 import numpy as np
 import os
+import matplotlib.pyplot as plt
 os.environ['PYDEVD_DISABLE_FILE_VALIDATION'] = '1'
+
+def calcularGanho(A, L, nota):
+    return A*nota+L
 def lerc(path:str, *args:str)->pd.DataFrame:
     return pd.read_csv(path, usecols=args, header=0, delimiter=';', engine="pyarrow")
 def criarTabGab(ANO:int|str)->None:
@@ -119,6 +123,57 @@ def addLine(ANO:str|int, cod:str|int):
     df["Angular_C"] = a
     df["Linear_C"] = b
     df.to_csv(f"{ANO}dadositens/{cod}.csv", index=False)
+def count_bits(n):
+    """
+    Brian Kernighan's Algorithm
+    """
+    count = 0
+    while n:
+        n &= (n - 1)  # Desliga o bit '1' menos significativo
+        count += 1
+    return count
+def diferenca(a,b):
+    r ='0'
+    d = '0'*(45-len(bin(b)[2:]))+bin(b)[2:]
+    for idx, n in enumerate(bin(a)[2:]):
+        r+= n if n==d[idx] else '0' if n==1 else '2'
+    
+    return int(r,2) if '2' not in r else 0
+
+    pass
+def find_first_power_of_two_diff(df, serial_number, batch_size=1000):
+    """
+    Encontra o primeiro número serial no DataFrame e sua nota cuja diferença com o 
+    número serial fornecido é uma potência de 2, processando em lotes.
+    Retorna apenas o primeiro número serial encontrado.
+    """
+    # df = df.sample(2000)
+    df["dif"] = df['Acertos_Decimal'].apply(lambda x: count_bits(x^serial_number if x!=serial_number else 2**45-1))# if x!=serial_number else 0)
+    indice = df['dif'].idxmin()
+    print(df["dif"][indice])
+    # print(df.sort_values(by="dif", ascending=True)["dif"].head(5))
+    # print(df.sort_values(by="dif", ascending=True)[1])
+    #'000000000000010000100000011011100101000000111'
+    #'000000000000010000100000011011100101000000111'
+    return df["Acertos_Decimal"][indice], df[df.columns[1]][indice]
+    num_batches = int(np.ceil(len(df) / batch_size))
+
+    for batch in range(num_batches):
+        start_index = batch * batch_size
+        end_index = start_index + batch_size
+        batch_df = df.iloc[start_index:end_index]
+
+        serial_numbers = batch_df['Acertos_Decimal'].to_numpy()
+        diffs = np.abs(serial_numbers - serial_number)
+
+        is_power_of_two = (diffs & (diffs - 1) == 0) & (diffs != 0)
+        indices = np.where(is_power_of_two)[0]
+        
+        if len(indices) > 0:
+            print(serial_numbers[indices[0]], batch_df[indices[0]][batch_df.columns[1]])
+            return serial_numbers[indices[0]], batch_df[indices[0]][batch_df.columns[1]]
+
+    return None, None
 def aproxNota(serial:int, ANO:str|int=2022, cod:str|int=1087)->float: #ta dando muito pra cima = nota máxima. Se conseguir dar nota mínima fechou todas
     ANO, cod = str(ANO), str(cod)
     df = pd.read_csv(f"{ANO}dadositens/{cod}.csv")
@@ -131,60 +186,66 @@ def aproxNota(serial:int, ANO:str|int=2022, cod:str|int=1087)->float: #ta dando 
     return (num+inf)/(1-den)
 def notaProx(serial:int, ANO:str|int=2022, cod:str|int=1087)->float:
     ANO, cod = str(ANO), str(cod)
-    df1 = pd.read_csv(f"{ANO}dados/{cod}.0.csv")
-    df2 = pd.read_csv(f"{ANO}dadositens/{cod}.csv")
+    df1 = pd.read_csv(f"{ANO}dados/{cod}.0.csv") # big data
+    df2 = pd.read_csv(f"{ANO}dadositens/{cod}.csv") #apenas coeficientes
     Angular_C, Linear_C = df2["Angular_C"].values.tolist(), df2["Linear_C"].values.tolist()
-    df_filtrado = df1[df1['Acertos_Decimal'] != serial]
-    diferencas_abs = np.abs(df1['Acertos_Decimal'].values - serial)
-    indice_mais_proximo = np.argmin(diferencas_abs)
-    linha_mais_proxima = df1.iloc[indice_mais_proximo]
-    nota_d = linha_mais_proxima["NU_NOTA_CN"]
-    valor_nota_cn_mais_proximo = df_filtrado.iloc[indice_mais_proximo]['Acertos_Decimal']
-    diferenca = abs(serial - valor_nota_cn_mais_proximo)
-    nota = nota_d
-    for idx, n in enumerate('0'*(45-len(bin(diferenca)[2:]))+bin(diferenca)[2:]):
-        if n==1:
-            nota+=(Angular_C[idx]*nota_d+Linear_C[idx]) #/(Angular_C[idx]+1)
-    return nota
-
-
-
-if __name__ == '__main__':
-    t = time()
-    # for i in range(45):
-    # carQ(pd.read_csv(f"2022dados/1087.0.csv"), 0, True)
-    # df = pd.read_csv(f"2022dadositens/1087.csv")
-    # column_to_shift = "Angular_C"
-    # # Shift the column
-    # df[column_to_shift] = df[column_to_shift].shift(-1)
-
-    # df.iloc[-1, df.columns.get_loc(column_to_shift)] = df[column_to_shift].iloc[0]
-    # df.to_csv("2022dadositens/1087.csv")
-
-    # addLine(2022, 1087)
     
-    # carQ(pd.read_csv(f"2022dados/1087.0.csv"), 44, True)
-    # pd.concat([pd.read_csv("2022dadositens/108586.csv"),pd.read_csv("2022dadositens/1087.csv")], ignore_index=True).to_csv("2022dadositens/10858687.csv")
-    # pd.concat([pd.read_csv("2022dados/108586.0.csv"),pd.read_csv("2022dados/1087.0.csv")], ignore_index=True).to_csv("2022dados/10858687.0.csv")
-    # addLine(2022,108586)
-    # addLine(2022,1087)
-    # print(notaProx(118364175,2022,1087))
-    # Apply the aproxNota function to the 'Acertos_Decimal' column
-    import matplotlib.pyplot as plt
-    df = pd.read_csv('2022dados/1085.0.csv')
-    df = df.sample(n=200)  # Seleciona aleatoriamente 100 linhas
-    df['Mapeada'] = df['Acertos_Decimal'].apply(mapear_resp)
-    df['Approx_Nota'] = df['Mapeada'].apply(notaProx)
+    # Presumo que as colunas Angular_C e Linear_C não são utilizadas no seu código original.
+    # tirar = serial
+    # df_filtrado = df1[df1['Acertos_Decimal'] != tirar]
+    # valores = df_filtrado['Acertos_Decimal'].values
+
+    # Filtra os valores menores que o serial e encontra o maior deles
+    # valores_menores_que_serial = valores[valores < tirar]
+    # if valores_menores_que_serial.size == 0:
+    #     return None  # Retorna None se não houver nenhum valor menor que serial
+    # valor_max_menor_que_serial = np.max(valores_menores_que_serial)
+
+    # # Encontra o índice do valor_max_menor_que_serial
+    # indice_max_menor_que_serial = np.where(valores == valor_max_menor_que_serial)[0][0]
+    
+    # linha_mais_proxima = df_filtrado.iloc[indice_max_menor_que_serial]
+    # tirar = valor_max_menor_que_serial
+    # nota_d = linha_mais_proxima["NU_NOTA_CN"]
+    serial_e, nota_d = find_first_power_of_two_diff(df1, serial)
+    # diferenca = abs(serial - valor_max_menor_que_serial)
+    # print(bin(diferenca))
+    nota = nota_d
+    serial = '0'*(45-len(bin(serial)[2:]))+bin(serial)[2:]
+    serial_e = '0'*(45-len(bin(serial_e)[2:]))+bin(serial_e)[2:]
+    variacao = 0
+    for i in range(45):
+        variacao +=(int(serial_e[i])-int(serial[i]))*(Angular_C[i]*nota_d+Linear_C[i]) 
+        nota+=(int(serial_e[i])-int(serial[i]))*(Angular_C[i]*nota_d+Linear_C[i]) 
+    print(variacao)
+    # for idx, n in enumerate('0'*(45-len(bin(diferenca)[2:]))+bin(diferenca)[2:]):
+    #     if n=='1':
+    #         nota+=(Angular_C[idx]*nota_d+Linear_C[idx]) #/(Angular_C[idx]+1)
+    # print(bin(diferenca)[2:].count('1'))
+    # print(diferenca)
+    return nota # if bin(diferenca)[2:].count('1') == 1 else -sum(notas)/len(notas)
+    # r = sum(notas)/len(notas)
+    # return r if bin(diferenca)[2:]
+
+def mostrar_acuracia():
+    df = pd.read_csv('2022dados/1087.0.csv')
+    df = df.sample(n=20)  # Seleciona aleatoriamente 100 linhas
+    # df['Mapeada'] = df['Acertos_Decimal'].apply(mapear_resp)
+    # df['Approx_Nota'] = df['Mapeada'].apply(notaProx)
+    df['NotaAprox'] = df["Acertos_Decimal"].apply(notaProx)
 
     # Selecting a sample of 2000 points for plotting to avoid overplotting
-    plot_sample = df #.sample(n=2000, random_state=42)
+    #plot_sample = df #.sample(n=2000, random_state=42)
     
     # Calculate the difference array
-    difference_array = df['Approx_Nota'] - df['NU_NOTA_CN']
+    difference_array = df['NotaAprox'] - df['NU_NOTA_CN']
+    # difference_array = difference_array[difference_array>-200]
+    # print(difference_array)
+    # difar = df['Approx_Nota'] - df['NU_NOTA_CN']
 
     # Plot the graph
     plt.figure(figsize=(10, 6))
-    plt.scatter(plot_sample['NU_NOTA_CN'], difference_array, alpha=0.5, label='Approximated vs Actual Nota')
+    plt.scatter(df['NU_NOTA_CN'], difference_array, alpha=0.5, label='Approximated vs Actual Nota')
     plt.xlabel('NU_NOTA_CN')
     plt.ylabel('Approximated Nota by aproxNota')
     plt.legend()
@@ -197,30 +258,38 @@ if __name__ == '__main__':
     statistics = {
         'mean': np.mean(difference_array),
         'median': np.median(difference_array),
-        # 'mode': stats.mode(difference_array)[0][0],
         'std_dev': np.std(difference_array),
         'variance': np.var(difference_array)
     }
     print(statistics)
-    # import matplotlib.pyplot as plt
-    # start = 1
-    # end = 45
 
-    # # Generate 400 equally spaced values in the range
-    # x_values = np.linspace(start, end)
+def achar_melhor_opcao(serial):
+    nota = notaProx(serial)
+    vet = (45-len(bin(serial)[2:]))*'0'+bin(serial)[2:]
+    df = pd.read_csv('2022dadositens/1087.csv')
+    Angular_C, Linear_C = df["Angular_C"], df["Linear_C"]
+    opcoes = [calcularGanho(Angular_C[i],Linear_C[i],nota)*int(vet[i]) for i in range(45)]
+    print("Questao "+str(opcoes.index(max(opcoes))+90), max(opcoes))
 
-    # # Calculate the output for each value
-    # y_values = [aproxNota(int((45-int(x))*'0'+int(x)*'1',2),2022,1087) for x in x_values]
-    # y2_values = [aproxNota(int((int(x))*'1'+(45-int(x))*'0',2),2022,1087) for x in x_values]
+def mostrar_graficos():
+    for i in range(45):
+        carQ(pd.read_csv(f"2022dados/1087.0.csv"), i, True)
 
-    # # Plotting
-    # plt.figure(figsize=(12, 6))
-    # plt.plot(x_values, y_values, y2_values, label='aproxNota(x)')
-    # plt.xlabel('Input Value')
-    # plt.ylabel('Output Value')
-    # plt.title('Function Behavior of aproxNota')
-    # plt.legend()
-    # plt.grid(True)
-    # plt.show()
+
+
+
+
+
+
+
+
+
+if __name__ == '__main__':
+    t = time()
+
+    # achar_melhor_opcao(1585143219722) # serial
+    mostrar_acuracia()
+    # print(notaProx(13220013949184))
+    # mostrar_graficos()
 
     print(f"time: {time()-t} seg")
