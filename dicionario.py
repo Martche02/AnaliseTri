@@ -223,13 +223,6 @@ def count_bits(n):
         n &= (n - 1)  # Desliga o bit '1' menos significativo
         count += 1
     return count
-def diferenca(a,b):
-    r ='0'
-    d = '0'*(45-len(bin(b)[2:]))+bin(b)[2:]
-    for idx, n in enumerate(bin(a)[2:]):
-        r+= n if n==d[idx] else '0' if n==1 else '2'
-    
-    return int(r,2) if '2' not in r else 0
 def find_first_power_of_two_diff(df, serial_number):
     df["dif"] = df['Acertos_Decimal'].apply(lambda x: count_bits(x^serial_number if x!=serial_number else 2**45-1))# if x!=serial_number else 0)
     indice = df['dif'].idxmin()
@@ -502,15 +495,22 @@ def analisarsigmoide(n, ANO, cod, p:bool=True):
         plt.ylabel('Diferença na Saída após Inversão')
         plt.grid(True)
         plt.show()
-def criar_cilindro(ANO, cod, n=30, Rarquivo='Rarquivo.csv', p:bool=False):
-    # for i in range(45):
-    #     analisarsigmoide(i)
+def criar_rarquivo(ANO, cod):
+    df = pd.read_csv(f"{str(ANO)}dados/{str(cod)}.0.csv")
+    df['Binario'] = df['Acertos_Decimal'].apply(dec2vet)
+    bin_cols = df['Binario'].apply(lambda x: pd.Series(list(x))).astype(int)
+    bin_cols.columns = [f'Resposta_{i+1}' for i in range(45)]
+    new_df = pd.concat([df[df.columns[1]], bin_cols], axis=1)
+    # new_df = df.sort_values(by="CO_POSICAO", ascending=True)[['NU_PARAM_A','NU_PARAM_B','NU_PARAM_C']]
+    return new_df
+def criar_cilindro(ANO, cod, n=30, p:bool=False):
     dados_totais = []
     model_directory = f"C:/Users/Marce/Codes/Frezza Fisica/models/{str(ANO)}_{str(cod)}"
     modelo_carregado = load_model(model_directory)
 
     # Carregar os dados
-    df = pd.read_csv(Rarquivo)
+    # df = pd.read_csv(Rarquivo)
+    df = criar_rarquivo(ANO, cod)
     df = df.drop(columns=df.columns[0])  # Remover a primeira coluna não booleana
     df = df.astype(bool)
     entradas = df.values  # Usar .values para obter um NumPy array
@@ -631,9 +631,10 @@ def determinar_nova_ordem_universal(df, p=11):
     
     return ordem_universal
 def grafico_cilindro_3d(ANO, cod, p=11):
-    caminho_arquivo = f'estatisticas_medias_desvios_totais{str(ANO)}_{str(cod)}.csv'
-    df = pd.read_csv(caminho_arquivo)
-
+    # caminho_arquivo = f'estatisticas_medias_desvios_totais{str(ANO)}_{str(cod)}.csv'
+    # caminho_arquivo = f"resultado_final.csv"
+    # df = pd.read_csv(caminho_arquivo)
+    df = classificar(ANO, cod)
     # Adicionar coluna de Posição baseada no Ponto_Medio dentro de cada grupo de Sigmóide
     df['Posicao'] = df.groupby('Sigmóide').rank(method='first')['Ponto_Medio']
 
@@ -658,7 +659,7 @@ def grafico_cilindro_3d(ANO, cod, p=11):
         df_sigmóide = df[df['Sigmóide'] == sigmoide].sort_values(by='Posicao')
 
         # Ajustar ypos para iniciar do 0 após ignorar os primeiros 11 pontos
-        ypos = df_sigmóide['Posicao'] - p-1  # Ajustado para base-0 após ignorar os primeiros 11
+        ypos = (df_sigmóide['Posicao'] - p-1)  # Ajustado para base-0 após ignorar os primeiros 11
 
         # Altura das barras
         dz = df_sigmóide['Media'].values
@@ -684,7 +685,81 @@ def grafico_cilindro_3d(ANO, cod, p=11):
 
     plt.tight_layout()
     plt.show()
+def classificar(ANO, cod):
+    # classificador_df = pd.read_csv("C:\\Users\Marce\\Downloads\\classificador_expanded.csv")
+    estatisticas_df = pd.read_csv(f'estatisticas_medias_desvios_totais{str(ANO)}_{str(cod)}.csv')
+    explodidor(ANO, cod)
+    with open(f'nclassificador_{str(ANO)}_{str(cod)}.csv', 'r') as file:
+        classificador_lines = file.readlines()
+
+    # Processando o arquivo classificador.csv manualmente
+    classificador_data = []
+    for line in classificador_lines[1:]:  # Ignorando o cabeçalho
+        parts = line.strip().split(',')
+        area = parts[0]
+        conteudo = parts[1]
+        questoes = [int(q.strip()) - 90 for q in parts[2:] if q.strip().isdigit()]  # Ajustando os números das questões
+        classificador_data.append((conteudo, questoes))
+
+    # Convertendo para DataFrame e expandindo as questões para linhas separadas
+    classificador_processed_df = pd.DataFrame(classificador_data, columns=['Conteudo', 'Questoes'])
+    classificador_expanded = classificador_processed_df.explode('Questoes')
+
+    # Criando um mapeamento de sigmoide para categoria
+    sigmoide_para_categoria = pd.Series(classificador_expanded.Conteudo.values, index=classificador_expanded.Questoes).to_dict()
+
+    # Lendo o arquivo de estatísticas
+    # estatisticas_df = pd.read_csv('caminho_para_o_arquivo/estatisticas_medias_desvios_totais2021_910.csv')
+
+    # Aplicando o mapeamento ao DataFrame de estatísticas
+    estatisticas_df['Categoria'] = estatisticas_df['Sigmóide'].apply(lambda x: sigmoide_para_categoria.get(x))
+
+    # Ajustando o Ponto_Medio para ser um inteiro entre 30 e 1, mantendo a ordem
+    estatisticas_df['Ponto_Medio_Ajustado'] = estatisticas_df.groupby('Sigmóide').cumcount(ascending=True) + 1
+
+    # Agrupar por Categoria e Ponto_Medio_Ajustado, somando as médias
+    estatisticas_agrupadas_df = estatisticas_df.groupby(['Categoria', 'Ponto_Medio_Ajustado'])['Media'].sum().reset_index()
+
+    # Renomear colunas para refletir a estrutura original
+    estatisticas_agrupadas_df = estatisticas_agrupadas_df.rename(columns={'Ponto_Medio_Ajustado': 'Ponto_Medio'})
+    estatisticas_agrupadas_df = estatisticas_agrupadas_df.rename(columns={'Categoria': 'Sigmóide'})
+
+    # Salvar o resultado final, se necessário
+    # estatisticas_agrupadas_df.to_csv('resultado_final.csv', index=False)
+    return estatisticas_agrupadas_df
+def explodidor(ANO, cod):
+    caminho = f'classificador_{str(ANO)}_{str(cod)}.csv'
+    classificador_df = pd.read_csv(caminho)
+
+    expanded_rows_corrected = []
+
+    # Iterar sobre cada linha do DataFrame classificador
+    for _, row in classificador_df.iterrows():
+        # Considerando a possibilidade de separação por ponto e vírgula e tratando "nan"
+        questoes = str(row['questoes']).replace(';', ',').split(',')
+        for questao in questoes:
+            questao = questao.strip()  # Remover espaços em branco
+            # Certificar-se de que a questão não está vazia e não é 'nan'
+            if questao and questao.lower() != 'nan':  
+                expanded_rows_corrected.append({
+                    'area': row['area'],
+                    'conteudo': row['conteudo'],
+                    'questao': int(questao)
+                })
+
+    # Criar um novo DataFrame com as linhas corrigidas
+    classificador_expanded_corrected_df = pd.DataFrame(expanded_rows_corrected)
+    # return classificador_expanded_corrected_df
+    # Salvar o DataFrame corrigido para um novo arquivo CSV
+    expanded_corrected_csv_path = "n"+caminho
+    classificador_expanded_corrected_df.to_csv(expanded_corrected_csv_path, index=False)
+
 if __name__ == '__main__':
     t = time()
-    
+    # criar_cilindro(2018, 448)
+    # criar_cilindro(2017, 392)
+    # classificar(2021, 910)
+    grafico_cilindro_3d(2021, 910)
+    # explodidor()
+    # classificar(2021, 910)
     print(time()-t)
