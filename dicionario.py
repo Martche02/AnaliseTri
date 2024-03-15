@@ -4,21 +4,20 @@ from time import time
 import pandas as pd
 import numpy as np
 import sqlite3
+import json
 import csv
 import os
-
-iab = False
+iab = True
 if iab:
     from sklearn.model_selection import train_test_split
     from sklearn.linear_model import LinearRegression
     from tensorflow.keras.models import load_model
     from tensorflow.keras.models import Sequential
     from tensorflow.keras.layers import Dense
-
 os.environ['PYDEVD_DISABLE_FILE_VALIDATION'] = '1'
 
-def ia(ANO, cod):
-    df = pd.read_csv(f"C:/Users/Marce/Codes/Frezza Fisica/"+str(ANO)+"dados/"+str(cod)+".0.csv")
+def ia(ANO, cod, LC_only:bool=False, dfi:pd.DataFrame()=pd.DataFrame, ling:str="", epc=20):
+    df = pd.read_csv(f"C:/Users/Marce/Codes/Frezza Fisica/"+str(ANO)+"dados/"+str(cod)+".0.csv") if not LC_only else dfi
     q = 45
     df[df.columns[1]] = df[df.columns[1]] / 1000 
     df['Acertos_Binario'] = df['Acertos_Decimal'].apply(lambda x: format(x, '045b')) 
@@ -33,14 +32,20 @@ def ia(ANO, cod):
         Dense(1, activation='sigmoid')  # Saída entre 0 e 1
     ])
     model.compile(optimizer='adam', loss='mean_absolute_error')
-    model.fit(X_train, y_train, epochs=20, validation_split=0.1)
+    model.fit(X_train, y_train, epochs=epc, validation_split=0.1)
     loss = model.evaluate(X_test, y_test)
     print(f'Loss: {loss}')
     predictions = model.predict(X_test)  # Desnormalizar as previsões
     errors = predictions.flatten() - y_test  # Calcula a diferença entre o previsto e o real
     print("Desvio padrão dos erros:", np.std(errors))
-    model_directory = f"C:/Users/Marce/Codes/Frezza Fisica/models/{ANO}_{cod}"
+    model_directory = f"C:/Users/Marce/Codes/Frezza Fisica/models/{ANO}_{cod}"+ling
     model.save(model_directory)
+def iaLC(ANO, cod):
+    df = pd.read_csv(f"C:/Users/Marce/Codes/Frezza Fisica/"+str(ANO)+"dados/"+str(cod)+".0.csv")
+    dfs = (df[df['TP_LINGUA'] == 0], df[df['TP_LINGUA'] == 1])
+    idiom = ("_ing", "_esp")
+    for lin in (0,1):
+        ia(ANO, cod, LC_only=True, dfi=dfs[lin], ling=idiom[lin], epc=40)
 def dec2vet(serial):
     return format(int(serial), '045b')
 def find_pairs_with_difference(df, X):
@@ -103,20 +108,29 @@ def calcularGanho(A, L, nota):
     return A*nota+L
 def lerc(path:str, *args:str)->pd.DataFrame:
     return pd.read_csv(path, usecols=args, header=0, delimiter=';', engine="pyarrow")
-def criarTabGab(ANO:int|str)->None:
-    l = ["CO_POSICAO","SG_AREA", "CO_ITEM", "TX_GABARITO", "NU_PARAM_A", "NU_PARAM_B", "NU_PARAM_C", "CO_PROVA"]
+def criarTabGab(ANO:int|str, LC_only:bool=False)->None:
+    l = ["CO_POSICAO","SG_AREA", "CO_ITEM", "TX_GABARITO",'TP_LINGUA', "NU_PARAM_A", "NU_PARAM_B", "NU_PARAM_C", "CO_PROVA"]
     df = lerc(str(ANO)+"/DADOS/ITENS_PROVA_"+str(ANO)+".csv", *l)
     for i in df["CO_PROVA"].dropna().unique().tolist():
-        df[df["CO_PROVA"]==i].to_csv(str(ANO)+"dadositens/"+str(i)+".csv", index=False)
-def criarTabRes(ANO:int|str)->None:
+        if (not LC_only) or (df.loc[df["CO_PROVA"] == i, "SG_AREA"].iloc[0] == "LC"):
+            df[df["CO_PROVA"]==i].to_csv(str(ANO)+"dadositens/"+str(i)+".csv", index=False)
+def criarTabRes(ANO:int|str, LC_only:bool=False)->None:
     c, d = ["TX_RESPOSTAS_", "NU_NOTA_", "CO_PROVA_"], ["LC", "CH", "CN", "MT"]
     l = [a+b for a in c for b in d]
+    l.append('TP_LINGUA')
     df = lerc(str(ANO)+"/DADOS/MICRODADOS_ENEM_"+str(ANO)+".csv", *l)
     gab = dict()
     for m in d:
-        for i in df[c[2]+m].dropna().unique().tolist():
-            df[df[c[2]+m]==i][[j+m for j in c[:2]]].to_csv(str(ANO)+"dados/"+str(i)+".csv", index=False)
-            gab[i] = lerc(str(ANO)+"/DADOS/MICRODADOS_ENEM_"+str(ANO)+".csv", *[j for j in [c[2]+m, "TX_GABARITO_"+m]]).set_index(c[2]+m).loc[i,"TX_GABARITO_"+m].iloc[0]
+        if m == "LC":
+            for i in df[c[2]+m].dropna().unique().tolist():
+                df[df[c[2]+m]==i][[*[j+m for j in c[:2]], 'TP_LINGUA']].to_csv(str(ANO)+"dados/"+str(i)+".csv", index=False)
+                gab[i] = lerc(str(ANO)+"/DADOS/MICRODADOS_ENEM_"+str(ANO)+".csv", *[j for j in [c[2]+m, "TX_GABARITO_"+m]]).set_index(c[2]+m).loc[i,"TX_GABARITO_"+m].iloc[0]
+        elif not LC_only:
+            ddf = df
+            del ddf['TP_LINGUA']
+            for i in ddf[c[2]+m].dropna().unique().tolist():
+                ddf[ddf[c[2]+m]==i][[j+m for j in c[:2]]].to_csv(str(ANO)+"dados/"+str(i)+".csv", index=False)
+                gab[i] = lerc(str(ANO)+"/DADOS/MICRODADOS_ENEM_"+str(ANO)+".csv", *[j for j in [c[2]+m, "TX_GABARITO_"+m]]).set_index(c[2]+m).loc[i,"TX_GABARITO_"+m].iloc[0]
     pd.DataFrame(list(gab.items()), columns=['codigo', 'gabarito']).to_csv(str(ANO)+"dados/gabarito.csv", index=False)
 def find_matching_responses_and_check_uniformity(my_response, answer_key, df, column_index=1):
     if len(my_response) != 45 or len(answer_key) != 45:
@@ -187,19 +201,71 @@ def nota_parallel(ANO: int, prova: str, cod: str|int, respostas: str) -> float|N
                 pool.terminate()
                 return result
     return None
-def binarizar(ANO):
+def binarizar(ANO, LC_only:bool=False):
     cods = os.listdir(str(ANO)+"dados/")
     for cod in cods:
         df = pd.read_csv(str(ANO)+"dados/"+str(cod))
-        if df.columns[0][-2:] != 'LC' and str(cod) !='gabarito.csv':
-            t = time()
+        if df.columns[0][-2:] == 'LC' and str(cod) !='gabarito.csv':
+            itens_df = pd.read_csv(f"{ANO}dadositens/{cod[:-6]}.csv")  # Carrega o CSV dos itens da prova
+            # gabarito_ingles = itens_df[itens_df['TP_LINGUA'] == 0].sort_values(by='CO_POSICAO')['TX_GABARITO'].tolist()
+            # gabarito_espanhol = itens_df[itens_df['TP_LINGUA'] == 1].sort_values(by='CO_POSICAO')['TX_GABARITO'].tolist()
+            # gabarito_outros_ordenado = itens_df[pd.isna(itens_df['TP_LINGUA'])].sort_values(by='CO_POSICAO')['TX_GABARITO'].tolist()
+
+            # gabarito_completo_ingles  = gabarito_ingles + gabarito_outros_ordenado
+            # gabarito_completo_espanhol  = gabarito_espanhol + gabarito_outros_ordenado
+            # def corrigir_prova(respostas, gabarito):
+            #     acertos = [1 if resposta == gabarito[i] else 0 for i, resposta in enumerate(respostas)]
+            #     acertos_decimal = int(''.join(map(str, acertos)), 2)
+            #     return acertos_decimal
+
+            # # Aplica a correção para cada aluno, usando o gabarito correspondente à língua escolhida.
+            # df['Acertos_Decimal'] = df.apply(lambda row: corrigir_prova(row[df.columns[0]], gabarito_completo_ingles if row['TP_LINGUA'] == 0 else gabarito_completo_espanhol), axis=1)
+
+            gabarito_ingles = itens_df[itens_df['TP_LINGUA'] == 0].sort_values(by='CO_POSICAO')['TX_GABARITO'].values
+            gabarito_espanhol = itens_df[itens_df['TP_LINGUA'] == 1].sort_values(by='CO_POSICAO')['TX_GABARITO'].values
+            gabarito_outros = itens_df[pd.isna(itens_df['TP_LINGUA'])].sort_values(by='CO_POSICAO')['TX_GABARITO'].values
+
+            # Função para converter as respostas em uma representação numérica (para vetorização)
+            def codificar_respostas(respostas):
+                mapeamento = {'A': 1, 'B': 2, 'C': 3, 'D': 4, 'E': 5, '.': 0, '*': 0}  # Tratando '.' e '*' como 0
+                return np.array([mapeamento.get(r, 0) for r in respostas])
+
+            # Codificando os gabaritos de maneira vetorizada
+            gabarito_codificado_ingles = np.concatenate([gabarito_ingles, gabarito_outros])
+            gabarito_codificado_espanhol = np.concatenate([gabarito_espanhol, gabarito_outros])
+
+            # Corrigindo as provas de maneira eficiente
+            def corrigir_provas_vetorizadas(df):
+                # Esta função assume que a primeira coluna de 'df' contém as respostas dos alunos como strings
+                # respostas_codificadas = np.array(df[df.columns[0]].tolist())
+                # 
+                # Inicializa uma coluna de acertos em decimal
+                df['Acertos_Decimal'] = 0
+                
+                for i, row in df.iterrows():
+                    respostas_codificadas =np.array( list(row[df.columns[0]]))
+                    gabarito_correto = gabarito_codificado_ingles if row['TP_LINGUA'] == 0 else gabarito_codificado_espanhol
+                    acertos = (respostas_codificadas == np.array(gabarito_correto)).astype(int)
+                    df.at[i, 'Acertos_Decimal'] = int(''.join(map(str, acertos)), 2)
+                    acertos = acertos
+            corrigir_provas_vetorizadas(df)
+            df.to_csv(f"{ANO}dados/{cod}", index=False)
+
+
+
+            # gabarito = ''.join(pd.read_csv(str(ANO)+"dadositens/"+str(cod)[:-6]+".csv").sort_values(by='CO_POSICAO')["TX_GABARITO"].tolist())
+            # gabarito_array = np.array(list(gabarito))
+            # respostas_array = np.array(df[df.columns[0]].apply(list).tolist())
+            # acertos = (respostas_array == gabarito_array).astype(int)
+            # df['Acertos_Decimal'] = [int(''.join(map(str, acerto)), 2) for acerto in acertos]
+            # df.to_csv(str(ANO)+"dados/"+str(cod), index=False)
+        elif df.columns[0][-2:] != 'LC' and str(cod) !='gabarito.csv' and not LC_only:
             gabarito = ''.join(pd.read_csv(str(ANO)+"dadositens/"+str(cod)[:-6]+".csv").sort_values(by='CO_POSICAO')["TX_GABARITO"].tolist())
             gabarito_array = np.array(list(gabarito))
             respostas_array = np.array(df[df.columns[0]].apply(list).tolist())
             acertos = (respostas_array == gabarito_array).astype(int)
             df['Acertos_Decimal'] = [int(''.join(map(str, acerto)), 2) for acerto in acertos]
             df.to_csv(str(ANO)+"dados/"+str(cod), index=False)
-            print(f"time: {time()-t} seg")
 def addLine(ANO:str|int, cod:str|int):
     print(cod)
     ANO, cod = str(ANO), str(cod)
@@ -295,20 +361,26 @@ def mostrar_acuracia(n, ANO, cod, cod_i, p:bool=False, min=0):
         'variance': np.var(difference_array)
     }
     print(statistics)
-def achar_melhor_opcao(serial, ANO, cod,f):
+def achar_melhor_opcao(serial, ANO, cod,f, n, ling=""):
     # nota = notaProx(serial)
     # vet = (45-len(bin(serial)[2:]))*'0'+bin(serial)[2:]
     vet = dec2vet(serial)
     # df = pd.read_csv('2022dadositens/1087.csv')
     # Angular_C, Linear_C = df["Angular_C"], df["Linear_C"]
     # opcoes = [(i,calcularGanho(Angular_C[i],Linear_C[i],nota)*( 1-int(vet[i]))) for i in range(45)]
-    notadoaluno = f(serial, ANO, cod)
-    opcoes = [(i+1,f(int(vet[:i] + str(1-int(vet[i])) + vet[i + 1:],2),ANO, cod)*( 1-int(vet[i])) ) for i in range(45)]
+    notadoaluno = f(serial, ANO, cod, ling)
+    opcoes = [(i+1,f(int(vet[:i] + str(1-int(vet[i])) + vet[i + 1:],2),ANO, cod, ling)*( 1-int(vet[i])) ) for i in range(45)]
     print("Nota:"+str(notadoaluno))
+    dic = {}
     for i in opcoes:
         if i[1] !=0:
             print("Questao "+str(i[0])+' '+str(i[1]-notadoaluno))
-    return max(opcoes, key=lambda x: x[1])
+            dic[str(n+i[0])] = i[1]-notadoaluno
+        else:
+            dic[str(n+i[0])] = 0
+    print(dic)
+    return dic
+    # return max(opcoes, key=lambda x: x[1])
     # print("Questao "+str(opcoes.index(max(opcoes))+90), max(opcoes))
 def achar_melhor_opcaoia(serial, ANO, cod):
     # nota = notaProx(serial)
@@ -349,22 +421,22 @@ def mk_dir(directory):
     """Cria um diretório se ele não existir."""
     if not os.path.exists(directory):
         os.makedirs(directory)
-def calcular_pesos_ANO(ANO:int|str):
-    mk_dir(str(ANO) + "dados/")
-    mk_dir(str(ANO) + "dadositens/")
-    criarTabRes(ANO) #cria os dados
-    criarTabGab(ANO) #cria os dadositens
-    binarizar(ANO) # cria decimais
-    for cod in os.listdir(str(ANO) + "dados/"):
-        caminho_arquivo = os.path.join(str(ANO) + "dados/", cod)
+def calcular_pesos_ANO(ANO:int|str, LC_only:bool=False):
+    # mk_dir(str(ANO) + "dados/")
+    # mk_dir(str(ANO) + "dadositens/")
+    criarTabRes(ANO, LC_only) #cria os dados
+    criarTabGab(ANO, LC_only) #cria os dadositens
+    # binarizar(ANO, LC_only) # cria decimais
+    # for cod in os.listdir(str(ANO) + "dados/"):
+    #     caminho_arquivo = os.path.join(str(ANO) + "dados/", cod)
         
-        # Verifica se o arquivo é maior que 20MB
-        if os.path.isfile(caminho_arquivo) and os.path.getsize(caminho_arquivo) > 20 * 1024 * 1024:
-            df = pd.read_csv(caminho_arquivo)
+    #     # Verifica se o arquivo é maior que 20MB
+    #     if os.path.isfile(caminho_arquivo) and os.path.getsize(caminho_arquivo) > 20 * 1024 * 1024:
+    #         df = pd.read_csv(caminho_arquivo)
 
-            if df.columns[0][-2:] != "LC" and cod != 'gabarito.csv':
-                print(df.columns[0][-2:])
-                addLine(ANO, str(cod[:-6]))  # calcula pesos
+    #         if df.columns[0][-2:] != "LC" and cod != 'gabarito.csv':
+    #             print(df.columns[0][-2:])
+    #             addLine(ANO, str(cod[:-6]))  # calcula pesos
 def getMeanValidItens(ANO, cod):
     """Retorna o array com pesos, valor mínimo e gabarito"""
     df = pd.read_csv(str(ANO)+"dadositens/"+str(cod)+".csv")
@@ -395,9 +467,9 @@ def db2csv(nome):
 
     # Close connection
     connection.close()
-def prever_nota_com_ia(acertos_decimal, ANO, cod):
+def prever_nota_com_ia(acertos_decimal, ANO, cod, ling=""):
     # Caminho para o diretório do modelo salvo
-    model_directory = f"C:/Users/Marce/Codes/Frezza Fisica/models/{ANO}_{cod}"
+    model_directory = f"C:/Users/Marce/Codes/Frezza Fisica/models/{ANO}_{cod}"+ling
     # Carregar o modelo
     modelo_carregado = load_model(model_directory)
     
@@ -503,8 +575,10 @@ def criar_rarquivo(ANO, cod):
     new_df = pd.concat([df[df.columns[1]], bin_cols], axis=1)
     # new_df = df.sort_values(by="CO_POSICAO", ascending=True)[['NU_PARAM_A','NU_PARAM_B','NU_PARAM_C']]
     return new_df
-def criar_cilindro(ANO, cod, n=30, p:bool=False):
+def criar_cilindro(ANO, cod, n=30, p:bool=False, modelo:bool=False):
     dados_totais = []
+    if modelo:
+        ia(ANO, cod)
     model_directory = f"C:/Users/Marce/Codes/Frezza Fisica/models/{str(ANO)}_{str(cod)}"
     modelo_carregado = load_model(model_directory)
 
@@ -630,11 +704,11 @@ def determinar_nova_ordem_universal(df, p=11):
     ordem_universal = max_pos_por_sigmóide.sort_values().index
     
     return ordem_universal
-def grafico_cilindro_3d(ANO, cod, p=11):
+def grafico_cilindro_3d(ANO, cod, f, p=11):
     # caminho_arquivo = f'estatisticas_medias_desvios_totais{str(ANO)}_{str(cod)}.csv'
     # caminho_arquivo = f"resultado_final.csv"
     # df = pd.read_csv(caminho_arquivo)
-    df = classificar(ANO, cod)
+    df = f(ANO, cod)
     # Adicionar coluna de Posição baseada no Ponto_Medio dentro de cada grupo de Sigmóide
     df['Posicao'] = df.groupby('Sigmóide').rank(method='first')['Ponto_Medio']
 
@@ -688,7 +762,7 @@ def grafico_cilindro_3d(ANO, cod, p=11):
 def classificar(ANO, cod):
     # classificador_df = pd.read_csv("C:\\Users\Marce\\Downloads\\classificador_expanded.csv")
     estatisticas_df = pd.read_csv(f'estatisticas_medias_desvios_totais{str(ANO)}_{str(cod)}.csv')
-    explodidor(ANO, cod)
+    explodidor(ANO, cod) # conseguir categorias por sigmoide. então, aplicar explosao e o resto.
     with open(f'nclassificador_{str(ANO)}_{str(cod)}.csv', 'r') as file:
         classificador_lines = file.readlines()
 
@@ -726,7 +800,52 @@ def classificar(ANO, cod):
 
     # Salvar o resultado final, se necessário
     # estatisticas_agrupadas_df.to_csv('resultado_final.csv', index=False)
+    print(estatisticas_agrupadas_df.head(40))
     return estatisticas_agrupadas_df
+def classvariasvezes(a, b):
+    dfs = []
+    for (ANO, cod) in [(2018, 448), (2019, 504), (2020, 598), (2021, 910), (2022, 1086)]:
+        dfs.append(classificar_e_ajustar_pontos_medios_corrigido(ANO, cod, True))
+    df = pd.concat(dfs, axis=0, ignore_index=True)
+    palavrasin = ["ENEM", "CN", "2022", "2021", "2020", "2019", "2018"]
+    # palavrasin = ["Física", "Biologia", "Química"]
+    # df_filtrado = df[~df.apply(lambda row: row.astype(str).str.contains('|'.join(palavrasout), case=False, regex=True)).any(axis=1)]
+    df_filtrado = df[df.apply(lambda row: row.astype(str).str.contains('|'.join(palavrasin), case=False, regex=True)).any(axis=1)]
+    return df_filtrado
+def classificar_e_ajustar_pontos_medios_corrigido(ANO, cod, media:bool=False):
+    estatisticas_df = pd.read_csv(f'estatisticas_medias_desvios_totais{str(ANO)}_{str(cod)}.csv')
+    
+    with open(f"{ANO}dadositens/dici.json", 'r', encoding='utf-8') as file:
+        dici_data = json.load(file)
+    with open("scrapping/combinado.json", 'r', encoding='utf-8') as file:
+        combinado_data = json.load(file)
+    prova_data = next((item for item in dici_data if item["Ano"] == ANO and item["Código"] == cod), None)
+    if not prova_data:
+        return None
+
+    questoes_para_codigo_enem = prova_data["questoes"]
+    codigo_enem_para_categoria = {item["Código Enem"]: item["categorias"] for item in combinado_data if "Código Enem" in item}
+
+    # Aplicando o mapeamento das sigmóides para as categorias
+    estatisticas_df['Categoria'] = estatisticas_df['Sigmóide'].apply(lambda x: codigo_enem_para_categoria.get(questoes_para_codigo_enem.get(str(x + 90)), 'Desconhecida'))
+
+    # Explodindo as categorias após o mapeamento para evitar índices duplicados
+    estatisticas_df_exploded = estatisticas_df.explode('Categoria')
+
+    # Garantindo que o DataFrame não contenha índices duplicados
+    estatisticas_df_exploded.reset_index(drop=True, inplace=True)
+
+    # Ajustando os pontos médios
+    estatisticas_df_exploded['Ponto_Medio_Ajustado'] = estatisticas_df_exploded.groupby(['Sigmóide', 'Categoria'])['Ponto_Medio'].rank(method='min').astype(int)
+
+    # Calculando a média para 'Media' após o ajuste dos pontos médios
+    if media:  
+        resultado_agrupado = estatisticas_df_exploded.groupby(['Categoria', 'Ponto_Medio_Ajustado'])['Media'].mean().reset_index().rename(columns={'Ponto_Medio_Ajustado': 'Ponto_Medio'})
+    else:
+        resultado_agrupado = estatisticas_df_exploded.groupby(['Categoria', 'Ponto_Medio_Ajustado'])['Media'].sum().reset_index().rename(columns={'Ponto_Medio_Ajustado': 'Ponto_Medio'})
+    resultado_agrupado = resultado_agrupado.rename(columns={'Categoria': 'Sigmóide'})
+
+    return resultado_agrupado
 def explodidor(ANO, cod):
     caminho = f'classificador_{str(ANO)}_{str(cod)}.csv'
     classificador_df = pd.read_csv(caminho)
@@ -753,13 +872,269 @@ def explodidor(ANO, cod):
     # Salvar o DataFrame corrigido para um novo arquivo CSV
     expanded_corrected_csv_path = "n"+caminho
     classificador_expanded_corrected_df.to_csv(expanded_corrected_csv_path, index=False)
+def dici(ANO):
+    file_path = f"{ANO}/DICIONÁRIO/Dicionário_Microdados_Enem_{ANO}.xlsx"
+    df = pd.read_excel(file_path, header=2)
+    df = df.fillna(method='ffill')
+    filtered_df = df[df['NOME DA VARIÁVEL'].str.startswith('CO_PROVA', na=False)]
+    json_data = [
+    {
+        'Ano': ANO,
+        'Prova': row['NOME DA VARIÁVEL'].split('_')[-1],
+        'Cor': row['Unnamed: 3'],
+        'Código': int(row['Variáveis Categóricas'])
+    }
+    for index, row in filtered_df.iterrows()
+    ]
+    with open(f"{ANO}dadositens/dici.json", 'w', encoding='utf-8') as json_file:
+        json.dump(json_data, json_file, ensure_ascii=False, indent=4)
+    
+    arquivo_json = f'{ANO}dadositens/dici.json'
+    # Carregar o conteúdo do arquivo JSON
+    with open(arquivo_json, 'r', encoding='utf-8') as file:
+        dados = json.load(file)
+    # Processar cada elemento no JSON
+    for item in dados:
+        cod = item['Código']
+        if ANO !=2020 or cod not in [601,602, 571, 572, 581, 582, 591, 592]:
+            csv_path = f'{ANO}dadositens/{cod}.csv'
+            if pd.read_csv(csv_path)['SG_AREA'].iloc[0] == "LC" and ANO == 2022: # ATENÇÃO MUDAR ISTO!
+            # Ler as colunas específicas do arquivo CSV
+                df = pd.read_csv(csv_path, usecols=['CO_POSICAO', 'CO_ITEM', 'TP_LINGUA'])
+                # item['questoes'] = [{str(row['CO_POSICAO']): int(row['CO_ITEM'])} for index, row in df.iterrows()]
+                item['questoes'] = {str(int(row['CO_POSICAO'])+{"0.0":0, "1.0":45, "nan":0}[str(row['TP_LINGUA'])]): int(row['CO_ITEM']) for index, row in df.iterrows()}
+            else:
+                df = pd.read_csv(csv_path, usecols=['CO_POSICAO', 'CO_ITEM'])
+                # item['questoes'] = [{str(row['CO_POSICAO']): int(row['CO_ITEM'])} for index, row in df.iterrows()]
+                item['questoes'] = {str(row['CO_POSICAO']): int(row['CO_ITEM']) for index, row in df.iterrows()}
+
+
+    # Salvar as modificações de volta ao arquivo JSON
+    with open(arquivo_json, 'w', encoding='utf-8') as file:
+        json.dump(dados, file, ensure_ascii=False, indent=4)
+def categorias(n, cod, ANO):
+    # Encontrar a prova específica no dici_data
+    with open("scrapping/combinado.json", 'r', encoding='utf-8') as file:
+        combinado_data = json.load(file)
+    with open(f"{ANO}dadositens/dici.json", 'r', encoding='utf-8') as file:
+        dici_data = json.load(file)
+    prova_data = next((item for item in dici_data if item["Ano"] == ANO and item["Código"] == cod), None)
+    if not prova_data:
+        return "Prova não encontrada."
+
+    # Obter o código ENEM para a questão específica
+    codigo_enem = prova_data["questoes"].get(str(n+90))
+    if not codigo_enem:
+        return "Questão não encontrada."
+
+    # Encontrar as categorias correspondentes no combinado_data
+    item_combinado = next((item for item in combinado_data if item.get("Código Enem") == codigo_enem), None)
+    if not item_combinado:
+        return "Categorias não encontradas."
+
+    return item_combinado["categorias"] + [item_combinado["Prova"]]
+def traduzir(vet_resp, cod_vet_resp, cod_modelo, ANO, ling=""):
+# Vetor de alternativas marcadas na prova Azul
+    # alternativas_azul = vet_resp
+    with open(f"{ANO}dadositens/dici.json", 'r', encoding='utf-8') as file:
+        dici_data = json.load(file)
+    # Transformando o vetor em um dicionário
+    # vetor_dict = {str(i + 136): alternativas_azul[i] for i in range(len(alternativas_azul))}
+    vetor_dict = vet_resp
+    # Dicionário da prova Azul (simplificado)
+    questoes_azul = {}
+    questoes_amarela = {} 
+    for prova in dici_data:
+        if prova['Código'] == cod_vet_resp:
+            questoes_azul = prova['questoes']
+        elif prova['Código'] == cod_modelo:
+            questoes_amarela = prova['questoes']
+    # Mapeando as respostas para os códigos na prova Azul
+    respostas_por_codigo_azul = {str(questoes_azul[str(i2esp(int(k), ling))]): vetor_dict[str(esp2i(int(k), ling))] for k in questoes_azul}
+    # print(respostas_por_codigo_azul)
+    # Ordenando as alternativas para a prova Amarela
+    respostas_amarela = {str(i2esp(int(k), ling)): respostas_por_codigo_azul[str(questoes_amarela[str(i2esp(int(k), ling))])] for k in sorted(questoes_amarela, key=lambda x: int(x))}
+
+    # Convertendo o dicionário de volta para uma string de alternativas na ordem da prova Amarela
+    # alternativas_amarela = ''.join(respostas_amarela[str(k)] for k in sorted(respostas_amarela, key=lambda x: int(x)))
+
+    return respostas_amarela
+def i2esp(i, ling):
+    if ling == "_esp" and i in [1,2,3,4,5]:
+        return i+45
+    elif ling == "_ing" and i in [46, 47, 48, 49, 50]:
+        return i-45
+    else:
+        return i
+def esp2i(i, ling):
+    if i in [46, 47, 48, 49, 50]:
+        return i-45
+    else:
+        return i
+def traduzirvet(vet_resp, cod_vet_resp, cod_modelo, ANO, n, ling=""):
+# Vetor de alternativas marcadas na prova Azul
+    alternativas_azul = vet_resp
+    with open(f"{ANO}dadositens/dici.json", 'r', encoding='utf-8') as file:
+        dici_data = json.load(file)
+    # Transformando o vetor em um dicionário
+    vetor_dict = {i2esp(i+1+n, ling): alternativas_azul[i] for i in range(len(alternativas_azul))}
+    # vetor_dict = vet_resp
+    # Dicionário da prova Azul (simplificado)
+    questoes_azul = {}
+    questoes_amarela = {} 
+    for prova in dici_data:
+        if prova['Código'] == cod_vet_resp:
+            questoes_azul = prova['questoes']
+        elif prova['Código'] == cod_modelo:
+            questoes_amarela = prova['questoes']
+    # Mapeando as respostas para os códigos na prova Azul
+    respostas_por_codigo_azul = {questoes_azul[str(i2esp(int(k), ling))]: vetor_dict[i2esp(int(k), ling)] for k in questoes_azul}
+    # print(respostas_por_codigo_azul)
+    # Ordenando as alternativas para a prova Amarela
+    respostas_amarela = {str(i2esp(int(k), ling)): respostas_por_codigo_azul[questoes_amarela[str(i2esp(int(k), ling))]] for k in sorted(questoes_amarela, key=lambda x: int(x))}
+
+    # Convertendo o dicionário de volta para uma string de alternativas na ordem da prova Amarela
+    # alternativas_amarela = ''.join(respostas_amarela[str(k)] for k in sorted(respostas_amarela, key=lambda x: int(x)))
+    respostas_ordenadas = ''.join(respostas_amarela[str(i)] for i in sorted(respostas_amarela, key=lambda x: int(x)))
+
+    return respostas_ordenadas
+def codigoEnemjson():
+    
+    # print("Campo 'cor' adicionado com sucesso a todos os elementos do arquivo JSON.")
+    combinado_path = 'scrapping/combinado.json'
+
+    # Carregar os itens do arquivo combinado.json
+    with open(combinado_path, 'r', encoding='utf-8') as file:
+        combinado_data = json.load(file)
+
+    # Iterar sobre cada item no combinado_data
+    for item in combinado_data:
+        ano = item["Ano"]
+        prova = item["Prova"]
+        cor = item["Cor"]
+        questao_numero = str(item["Questão"])  # Convertendo para string para corresponder às chaves em 'questoes'
+
+        # Construir o caminho para o arquivo dici.json correspondente
+        dici_path = f'{ano}dadositens/dici.json'
+
+        # Verificar se o arquivo dici.json existe para esse ano
+        if os.path.exists(dici_path):
+            with open(dici_path, 'r', encoding='utf-8') as file:
+                dici_data = json.load(file)
+
+            # Procurar no dici_data pelo elemento que corresponde à combinação de Ano, Prova, e Cor
+            for dici_item in dici_data:
+                if dici_item["Ano"] == ano and dici_item["Prova"] == prova and dici_item["Cor"] == cor:
+                    # Verificar se a questão está nas questoes do dici_item
+                    if questao_numero in dici_item["questoes"]:
+                        # Adicionar o Código Enem ao item original
+                        item["Código Enem"] = dici_item["questoes"][questao_numero]
+                    break
+
+    # Salvar as modificações de volta no arquivo combinado.json
+    with open(combinado_path, 'w', encoding='utf-8') as file:
+        json.dump(combinado_data, file, ensure_ascii=False, indent=4)
+def cilindro_aluno(respostas, cod_prova_aluno, cod_prova_modelo, cod_prova_infos, ANO, n, media:bool=False, ling=""):
+
+    df = pd.read_csv(str(ANO)+"dadositens/"+str(cod_prova_aluno)+".csv")
+    df = df if ling == '' else {"_ing":df[df['TP_LINGUA'] != 1], "_esp":df[df['TP_LINGUA'] != 0]}[ling]
+    resposta_aluno_array = np.array(list(respostas))
+    gabarito = ''.join( df.sort_values(by='CO_POSICAO')["TX_GABARITO"].tolist())
+    gabarito_array = np.array(list(gabarito))
+    acertos = ''.join(map(str,(resposta_aluno_array == gabarito_array).astype(int)))
+    vet = traduzirvet(acertos, cod_prova_aluno, cod_prova_modelo, ANO, n, ling)
+    # print(vet)
+    # Convertendo o vetor de acertos para um número decimal
+    acertos_decimal = int(''.join(map(str, vet)), 2)
+    print(acertos_decimal)
+    # print(acertos_decimal)
+    js = traduzir(achar_melhor_opcao( acertos_decimal, ANO, str(cod_prova_modelo), prever_nota_com_ia, n, ling), cod_prova_modelo, cod_prova_infos, ANO, ling)
+    df = pd.DataFrame([js])
+    df = df.T
+    df.index.name = 'Sigmóide'
+    df.columns = ['Media']
+    estatisticas_df = df.reset_index()
+    # estatisticas_df = pd.read_csv(f'estatisticas_medias_desvios_totais{str(ANO)}_{str(cod)}.csv')
+    
+    with open(f"{ANO}dadositens/dici.json", 'r', encoding='utf-8') as file:
+        dici_data = json.load(file)
+    with open("scrapping/combinado.json", 'r', encoding='utf-8') as file:
+        combinado_data = json.load(file)
+    prova_data = next((item for item in dici_data if item["Ano"] == ANO and item["Código"] == cod_prova_infos), None)
+    print(prova_data)
+    questoes_para_codigo_enem = prova_data["questoes"]
+    codigo_enem_para_categoria = {item["Código Enem"]: item["categorias"] for item in combinado_data if "Código Enem" in item and item["Ano"]== ANO}
+    print(codigo_enem_para_categoria)
+    # Aplicando o mapeamento das sigmóides para as categorias
+    estatisticas_df['Categoria'] = estatisticas_df['Sigmóide'].apply(lambda x: codigo_enem_para_categoria.get(questoes_para_codigo_enem.get(str(int(x))), 'Desconhecida'))
+    print(estatisticas_df['Sigmóide'])
+    # Explodindo as categorias após o mapeamento para evitar índices duplicados
+    estatisticas_df_exploded = estatisticas_df.explode('Categoria')
+
+    # Garantindo que o DataFrame não contenha índices duplicados
+    estatisticas_df_exploded.reset_index(drop=True, inplace=True)
+
+    # Ajustando os pontos médios
+    # estatisticas_df_exploded['Ponto_Medio_Ajustado'] = estatisticas_df_exploded.groupby(['Sigmóide', 'Categoria'])['Ponto_Medio'].rank(method='min').astype(int)
+    # Calculando a média para 'Media' após o ajuste dos pontos médios
+    if media:  
+        resultado_agrupado = estatisticas_df_exploded.groupby(['Categoria'])['Media'].mean().reset_index()
+    else:
+        resultado_agrupado = estatisticas_df_exploded.groupby(['Categoria'])['Media'].sum().reset_index()
+    resultado_agrupado = resultado_agrupado.rename(columns={'Categoria': 'Sigmóide'})
+    df = resultado_agrupado
+    prova_mapping = {
+        "Artes": "LC",
+        "Espanhol": "LC",
+        "Inglês": "LC",
+        "Literatura": "LC",
+        "Português": "LC",
+        "Filosofia": "CH",
+        "Geografia": "CH",
+        "História": "CH",
+        "Sociologia": "CH",
+        "Biologia": "CN",
+        "Física": "CN",
+        "Química": "CN",
+        "Matemática": "MT"
+    }
+    sigmóides_de_interesse_CN = ['Biologia', 'Física', 'Química']
+    sigmóides_de_interesse_física = ['Análise Dimensional / Sistemas de Unidades', 'Eletricidade', 'Eletromagnetismo', 'Física Moderna', 'Mecânica', 'Ondulatória', 'Óptica', 'Termologia']
+    sigmóides_de_interesse_química = ['Físico-Química', 'Química Ambiental', 'Química Geral', 'Química Inorgânica', 'Química Orgânica']
+    sigmóides_de_interesse_biologia = ['Bioquímica', 'Botânica (Plantas)', 'Citologia', 'Ecologia', 'Embriologia', 'Evolução', 'Fisiologia', 'Genética', 'Histologia', 'Microrganismos', 'Saúde Humana', 'Zoologia']
+    sigmóides_de_interesse_MT = ['Álgebra', 'Análise de Tabelas e Gráficos', 'Estatística, Prob. e A. Combinatória', 'Geometria', 'Lógica', 'Matemática Básica', 'Matemática Financeira']
+    sigmóides_de_interesse_CH = ['Geografia', 'História', 'Filosofia', 'Sociologia']
+    interesse = sigmóides_de_interesse_CN
+    # df = df[df['Sigmóide'].isin(interesse)]
+    df['Sigmóide'] = df['Sigmóide'].apply( lambda x: f"{x}\n{len(estatisticas_df_exploded[(estatisticas_df_exploded['Media'] > 0) & (estatisticas_df_exploded['Categoria'] == x)])}/{len(estatisticas_df_exploded[(estatisticas_df_exploded['Categoria'] == x)])} questões")
+    df = df[df['Media'] > 0].sort_values(by='Media', ascending=False)
+    # df = df[df['Media'] >= 0]
+    total = sum(df['Media'])
+    # print("Geografia:")
+    # print(len(estatisticas_df_exploded[(estatisticas_df_exploded['Media'] > 0) & (estatisticas_df_exploded['Categoria'] == 'Geografia')]))
+    def custom_autopct(pct):
+        # Calculando o valor absoluto correspondente à porcentagem
+        value = int(round(pct*total/100.0))
+        # Retornando a string formatada com porcentagem e valor absoluto (média)
+        return '{p:.2f}%\n{v:d} pts.'.format(p=pct, v=value)
+    plt.figure(figsize=(10, 7))
+    plt.pie(df['Media'], labels=df['Sigmóide'], autopct=custom_autopct)
+    plt.title('Pontos por Estudar cada Matéria:')
+    plt.show()
+    return resultado_agrupado
 
 if __name__ == '__main__':
+    #Lembretes Mel: Microorganismos -> Microbiologia
     t = time()
-    # criar_cilindro(2018, 448)
-    # criar_cilindro(2017, 392)
-    # classificar(2021, 910)
-    grafico_cilindro_3d(2021, 910)
-    # explodidor()
-    # classificar(2021, 910)
+    respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos = "DEEBABCDDAADCBADADBBDACBBCAAEBECDDACDAABBEEBD", "", 90, 1088, 1086, 1085 #MEL CN 2022 : 586.7 1088 1086 1085
+    # respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos = "CDBBADECAEBBBEAEDDDBECADCACBACEECCBBABDCAEAAC", "", 135, 1077, 1076, 1075 #MEL MT 2022
+    # respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos = "ABDAAEDBADBBCDDADCABBBDCDBEDBADAEBADECEEBCCCD", "", 45, 1058, 1056, 1055 #MEL CH 2022
+    # respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos   = "ACCEACAECDBEDEDACDAECCCAEACABDEDBADBACABDACCC", "_esp", 0, 1067,1066,1065 #MEL LC 2022 : 549.8
+    # cod_prova_aluno = 1067
+    # cod_prova_modelo = 1066 #prova amarela
+    # cod_prova_infos = 1065 #prova azul
+    ANO = 2022
+    # n = 0
+    media = False
+    df = cilindro_aluno(respostas, cod_prova_aluno, cod_prova_modelo, cod_prova_infos, ANO, n, media, ling=ling)
     print(time()-t)
