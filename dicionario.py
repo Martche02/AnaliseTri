@@ -7,15 +7,13 @@ import sqlite3
 import json
 import csv
 import os
-iab = True
-if iab:
+os.environ['PYDEVD_DISABLE_FILE_VALIDATION'] = '1'
+if True:
     from sklearn.model_selection import train_test_split
     from sklearn.linear_model import LinearRegression
     from tensorflow.keras.models import load_model
     from tensorflow.keras.models import Sequential
     from tensorflow.keras.layers import Dense
-os.environ['PYDEVD_DISABLE_FILE_VALIDATION'] = '1'
-
 def ia(ANO, cod, LC_only:bool=False, dfi:pd.DataFrame()=pd.DataFrame, ling:str="", epc=20):
     df = pd.read_csv(f"C:/Users/Marce/Codes/Frezza Fisica/"+str(ANO)+"dados/"+str(cod)+".0.csv") if not LC_only else dfi
     q = 45
@@ -708,7 +706,7 @@ def grafico_cilindro_3d(ANO, cod, f, p=11):
     # caminho_arquivo = f'estatisticas_medias_desvios_totais{str(ANO)}_{str(cod)}.csv'
     # caminho_arquivo = f"resultado_final.csv"
     # df = pd.read_csv(caminho_arquivo)
-    df = f(ANO, cod)
+    df = f(ANO, cod) #pegar categoria
     # Adicionar coluna de Posição baseada no Ponto_Medio dentro de cada grupo de Sigmóide
     df['Posicao'] = df.groupby('Sigmóide').rank(method='first')['Ponto_Medio']
 
@@ -1122,19 +1120,70 @@ def cilindro_aluno(respostas, cod_prova_aluno, cod_prova_modelo, cod_prova_infos
     plt.title('Pontos por Estudar cada Matéria:')
     plt.show()
     return resultado_agrupado
+def cilindro_anos(anos_codigos, ponto, media):
+    ponto = int(30*(ponto-200+11)/700)+1
+    ponto = ponto if ponto<30 else 30
+    ponto = ponto if ponto>0 else 0
+    print(ponto)
+    def obter_e_preparar_dataframes(anos_codigos, ponto):
+        dfs = []
+        for ano, codigo in anos_codigos:
+            df = classificar_e_ajustar_pontos_medios_corrigido(ano, codigo, media)
+            df = df[df['Ponto_Medio'] == ponto]
+            df['Ano'] = ano  # Adicionando uma coluna de ano para identificar o dataframe
+            dfs.append(df)
+        return dfs
 
+    def mesclar_dataframes(dfs):
+        # A primeira parte da sua pergunta parece indicar que você já tem uma função para mesclar dois dataframes.
+        # Aqui, adaptaremos para mesclar múltiplos.
+        merged_df = pd.concat(dfs, ignore_index=True)
+        return merged_df.pivot_table(index='Sigmóide', columns='Ano', values='Media').reset_index()
+
+
+    # Obter e preparar dataframes
+    dfs = obter_e_preparar_dataframes(anos_codigos, ponto)
+
+    # Mesclar os dataframes
+    merged_df = mesclar_dataframes(dfs)
+    # Aumentar o tamanho da imagem e plotar o gráfico
+    plt.figure(figsize=(30, 10))  # Ajuste o tamanho conforme necessário
+
+    # Garantir que plotamos apenas os anos no eixo X
+    anos = [ano for ano, _ in anos_codigos]
+
+    for index, row in merged_df.iterrows():
+        # Aqui, você deve pegar os valores de 'Média' para cada ano
+        media_values = np.array([1000*row[ano] for ano in anos])
+        plt.plot(anos, media_values, marker='o', label=row['Sigmóide'])
+        # Calculamos a média e o desvio padrão desses valores
+        media = media_values.mean()
+        desvio_padrao = media_values.std()
+        
+        # Imprimimos os valores para cada 'Sigmóide'
+        if not np.isnan(media):
+            # print(media)
+            print(f"Sigmóide: {row['Sigmóide']}, Média: {media:.4f}, Desvio Padrão: {desvio_padrao:.4f}")
+
+    plt.xlabel('Ano')
+    plt.ylabel('Média')
+    plt.title('Comparação da Média por Sigmóide entre Anos')
+    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.xticks(anos)  # Ajustar os ticks do eixo X para os anos
+    plt.tight_layout()
+    plt.show()
+
+#Lembretes Mel: Microorganismos -> Microbiologia
+# respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos = "DEEBABCDDAADCBADADBBDACBBCAAEBECDDACDAABBEEBD", "", 90, 1088, 1086, 1085 #MEL CN 2022 : 586.7
+# respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos = "CDBBADECAEBBBEAEDDDBECADCACBACEECCBBABDCAEAAC", "", 135, 1077, 1076, 1075 #MEL MT 2022
+# respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos = "ABDAAEDBADBBCDDADCABBBDCDBEDBADAEBADECEEBCCCD", "", 45, 1058, 1056, 1055 #MEL CH 2022
+# respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos   = "ACCEACAECDBEDEDACDAECCCAEACABDEDBADBACABDACCC", "_esp", 0, 1067,1066,1065 #MEL LC 2022 : 549.8
+# df = cilindro_aluno(respostas, cod_prova_aluno, cod_prova_modelo, cod_prova_infos, 2022, n, media=False, ling=ling)
+# anos_codigos = [(2022, 1086), (2021, 910), (2019, 504), (2018, 448)]  # Adicione mais tuplas conforme necessário
+# ponto = 586.7
+# media = False
+# cilindro_anos(anos_codigos, ponto, media)
 if __name__ == '__main__':
-    #Lembretes Mel: Microorganismos -> Microbiologia
     t = time()
-    respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos = "DEEBABCDDAADCBADADBBDACBBCAAEBECDDACDAABBEEBD", "", 90, 1088, 1086, 1085 #MEL CN 2022 : 586.7 1088 1086 1085
-    # respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos = "CDBBADECAEBBBEAEDDDBECADCACBACEECCBBABDCAEAAC", "", 135, 1077, 1076, 1075 #MEL MT 2022
-    # respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos = "ABDAAEDBADBBCDDADCABBBDCDBEDBADAEBADECEEBCCCD", "", 45, 1058, 1056, 1055 #MEL CH 2022
-    # respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos   = "ACCEACAECDBEDEDACDAECCCAEACABDEDBADBACABDACCC", "_esp", 0, 1067,1066,1065 #MEL LC 2022 : 549.8
-    # cod_prova_aluno = 1067
-    # cod_prova_modelo = 1066 #prova amarela
-    # cod_prova_infos = 1065 #prova azul
-    ANO = 2022
-    # n = 0
-    media = False
-    df = cilindro_aluno(respostas, cod_prova_aluno, cod_prova_modelo, cod_prova_infos, ANO, n, media, ling=ling)
+    
     print(time()-t)
