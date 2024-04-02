@@ -1043,17 +1043,20 @@ def cilindro_aluno(respostas, cod_prova_aluno, cod_prova_modelo, cod_prova_infos
     vet = traduzirvet(acertos, cod_prova_aluno, cod_prova_modelo, ANO, n, ling)
     # print(vet)
     # Convertendo o vetor de acertos para um número decimal
-    acertos_decimal = int(''.join(map(str, vet)), 2)
+    acertos_decimal = int(''.join(map(str, vet)), 2) #respostas traduzidas
     print(acertos_decimal)
     # print(acertos_decimal)
     js = traduzir(achar_melhor_opcao( acertos_decimal, ANO, str(cod_prova_modelo), prever_nota_com_ia, n, ling), cod_prova_modelo, cod_prova_infos, ANO, ling)
-    df = pd.DataFrame([js])
+    categorizacao(js, cod_prova_infos, ANO, media)
+    # estatisticas_df = pd.read_csv(f'estatisticas_medias_desvios_totais{str(ANO)}_{str(cod)}.csv')
+    #FIM DA PRIMEIRA PARTE (respostas, provas, ano, ling) - >df
+def categorizacao(js:dict, cod_prova_infos:int, ANO:int, media:bool=False)->pd.DataFrame:
+    #js pode vir tanto do cilindro_aluno, chamado internamente, quanto do achar_melhor_opcao, caso o aluno faça a prova já na prova azul e seja corrigida na mesma #começar a corrigir na prova azul!!!!
+    df = pd.DataFrame([js]) #correlação {"n0 da questao (0-180)", peso} para a prova cod_prova_infos, aka azul
     df = df.T
     df.index.name = 'Sigmóide'
     df.columns = ['Media']
     estatisticas_df = df.reset_index()
-    # estatisticas_df = pd.read_csv(f'estatisticas_medias_desvios_totais{str(ANO)}_{str(cod)}.csv')
-    
     with open(f"{ANO}dadositens/dici.json", 'r', encoding='utf-8') as file:
         dici_data = json.load(file)
     with open("scrapping/combinado.json", 'r', encoding='utf-8') as file:
@@ -1172,7 +1175,10 @@ def cilindro_anos(anos_codigos, ponto, media):
     plt.xticks(anos)  # Ajustar os ticks do eixo X para os anos
     plt.tight_layout()
     plt.show()
-
+def cilindro_para_js(ANO, cod_azul, area, ling, serial):
+    n = {"LC":0, "CH": 45, "CN": 90, "MT": 135}[area] #modificar para provas antigas
+    d = achar_melhor_opcao(serial, ANO, cod_azul, prever_nota_com_ia, n, ling) #achar melhor opção já ta implementada em js, só tem que fazer ela retornar um json
+    categorizacao(d, cod_azul, ANO)
 #Lembretes Mel: Microorganismos -> Microbiologia
 # respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos = "DEEBABCDDAADCBADADBBDACBBCAAEBECDDACDAABBEEBD", "", 90, 1088, 1086, 1085 #MEL CN 2022 : 586.7
 # respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos = "CDBBADECAEBBBEAEDDDBECADCACBACEECCBBABDCAEAAC", "", 135, 1077, 1076, 1075 #MEL MT 2022
