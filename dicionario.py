@@ -7,6 +7,7 @@ import sqlite3
 import json
 import csv
 import os
+import gc
 os.environ['PYDEVD_DISABLE_FILE_VALIDATION'] = '1'
 if True:
     from sklearn.model_selection import train_test_split
@@ -113,22 +114,24 @@ def criarTabGab(ANO:int|str, LC_only:bool=False)->None:
         if (not LC_only) or (df.loc[df["CO_PROVA"] == i, "SG_AREA"].iloc[0] == "LC"):
             df[df["CO_PROVA"]==i].to_csv(str(ANO)+"dadositens/"+str(i)+".csv", index=False)
 def criarTabRes(ANO:int|str, LC_only:bool=False)->None:
-    c, d = ["TX_RESPOSTAS_", "NU_NOTA_", "CO_PROVA_"], ["LC", "CH", "CN", "MT"]
+    c, d = ["TX_RESPOSTAS_", "NU_NOTA_", "CO_PROVA_"], ["LC", "CH", "CN", "MT"] if not LC_only else ["LC"]
     l = [a+b for a in c for b in d]
-    l.append('TP_LINGUA')
+    if not LC_only:
+        l.append('TP_LINGUA')
     df = lerc(str(ANO)+"/DADOS/MICRODADOS_ENEM_"+str(ANO)+".csv", *l)
     gab = dict()
+    
     for m in d:
         if m == "LC":
             for i in df[c[2]+m].dropna().unique().tolist():
-                df[df[c[2]+m]==i][[*[j+m for j in c[:2]], 'TP_LINGUA']].to_csv(str(ANO)+"dados/"+str(i)+".csv", index=False)
-                gab[i] = lerc(str(ANO)+"/DADOS/MICRODADOS_ENEM_"+str(ANO)+".csv", *[j for j in [c[2]+m, "TX_GABARITO_"+m]]).set_index(c[2]+m).loc[i,"TX_GABARITO_"+m].iloc[0]
-        elif not LC_only:
-            ddf = df
-            del ddf['TP_LINGUA']
+                df[df[c[2]+m] == i][[*[j+m for j in c[:2]], 'TP_LINGUA']].to_csv(str(ANO)+"dados/"+str(i)+".csv", index=False)
+                gab[i] = lerc(str(ANO)+"/DADOS/MICRODADOS_ENEM_"+str(ANO)+".csv", *[j for j in [c[2]+m, "TX_GABARITO_"+m]]).set_index(c[2]+m).loc[i, "TX_GABARITO_"+m].iloc[0]
+        else:
+            ddf = df.drop(columns=['TP_LINGUA'], errors='ignore')
             for i in ddf[c[2]+m].dropna().unique().tolist():
-                ddf[ddf[c[2]+m]==i][[j+m for j in c[:2]]].to_csv(str(ANO)+"dados/"+str(i)+".csv", index=False)
-                gab[i] = lerc(str(ANO)+"/DADOS/MICRODADOS_ENEM_"+str(ANO)+".csv", *[j for j in [c[2]+m, "TX_GABARITO_"+m]]).set_index(c[2]+m).loc[i,"TX_GABARITO_"+m].iloc[0]
+                ddf[ddf[c[2]+m] == i][[j+m for j in c[:2]]].to_csv(str(ANO)+"dados/"+str(i)+".csv", index=False)
+                gab[i] = lerc(str(ANO)+"/DADOS/MICRODADOS_ENEM_"+str(ANO)+".csv", *[j for j in [c[2]+m, "TX_GABARITO_"+m]]).set_index(c[2]+m).loc[i, "TX_GABARITO_"+m].iloc[0]
+                
     pd.DataFrame(list(gab.items()), columns=['codigo', 'gabarito']).to_csv(str(ANO)+"dados/gabarito.csv", index=False)
 def find_matching_responses_and_check_uniformity(my_response, answer_key, df, column_index=1):
     if len(my_response) != 45 or len(answer_key) != 45:
@@ -201,6 +204,8 @@ def nota_parallel(ANO: int, prova: str, cod: str|int, respostas: str) -> float|N
     return None
 def binarizar(ANO, LC_only:bool=False):
     cods = os.listdir(str(ANO)+"dados/")
+    #criarTabGab(ANO, LC_only=LC_only)
+    criarTabRes(ANO, LC_only=LC_only)
     for cod in cods:
         df = pd.read_csv(str(ANO)+"dados/"+str(cod))
         if df.columns[0][-2:] == 'LC' and str(cod) !='gabarito.csv':
@@ -243,7 +248,7 @@ def binarizar(ANO, LC_only:bool=False):
                 for i, row in df.iterrows():
                     respostas_codificadas =np.array( list(row[df.columns[0]]))
                     gabarito_correto = gabarito_codificado_ingles if row['TP_LINGUA'] == 0 else gabarito_codificado_espanhol
-                    acertos = (respostas_codificadas == np.array(gabarito_correto)).astype(int)
+                    acertos = (respostas_codificadas[respostas_codificadas != "9"] == np.array(gabarito_correto)).astype(int)
                     df.at[i, 'Acertos_Decimal'] = int(''.join(map(str, acertos)), 2)
                     acertos = acertos
             corrigir_provas_vetorizadas(df)
@@ -420,11 +425,11 @@ def mk_dir(directory):
     if not os.path.exists(directory):
         os.makedirs(directory)
 def calcular_pesos_ANO(ANO:int|str, LC_only:bool=False):
-    # mk_dir(str(ANO) + "dados/")
-    # mk_dir(str(ANO) + "dadositens/")
-    criarTabRes(ANO, LC_only) #cria os dados
-    criarTabGab(ANO, LC_only) #cria os dadositens
-    # binarizar(ANO, LC_only) # cria decimais
+    if not LC_only:
+        pass
+        #mk_dir(str(ANO) + "dados/")
+        #mk_dir(str(ANO) + "dadositens/")
+    binarizar(ANO, LC_only) # cria decimais
     # for cod in os.listdir(str(ANO) + "dados/"):
     #     caminho_arquivo = os.path.join(str(ANO) + "dados/", cod)
         
@@ -473,11 +478,11 @@ def prever_nota_com_ia(acertos_decimal, ANO, cod, ling=""):
     
     # Converter acertos decimais para binário e criar uma matriz para a previsão
     acertos_binario = format(int(acertos_decimal), '045b')  # Asegura-se de que o valor esteja em binário com 45 bits
-    acertos_binario_array = np.array([[int(bit) for bit in acertos_binario]])  # Transforma em array do numpy
-
+    acertos_binario_array = np.array([[int(bit) for bit in acertos_binario]]) # Transforma em array do numpy
+    print(acertos_binario_array)
     # Fazer a previsão
     prediction = modelo_carregado.predict(acertos_binario_array)
-    
+    print(prediction)
     # Aqui, você pode ajustar a previsão conforme necessário, por exemplo, desnormalizando o valor se aplicável
     # Se você normalizou as notas durante o treinamento, faça a conversão inversa aqui
     nota_prevista = prediction.flatten()[0] * 1000  # Exemplo de desnormalização
@@ -703,10 +708,10 @@ def determinar_nova_ordem_universal(df, p=11):
     
     return ordem_universal
 def grafico_cilindro_3d(ANO, cod, f, p=11):
-    # caminho_arquivo = f'estatisticas_medias_desvios_totais{str(ANO)}_{str(cod)}.csv'
+    caminho_arquivo = f'estatisticas_medias_desvios_totais{str(ANO)}_{str(cod)}.csv'
     # caminho_arquivo = f"resultado_final.csv"
-    # df = pd.read_csv(caminho_arquivo)
-    df = f(ANO, cod) #pegar categoria
+    df = pd.read_csv(caminho_arquivo)
+    # df = f(ANO, cod) #pegar categoria
     # Adicionar coluna de Posição baseada no Ponto_Medio dentro de cada grupo de Sigmóide
     df['Posicao'] = df.groupby('Sigmóide').rank(method='first')['Ponto_Medio']
 
@@ -896,7 +901,7 @@ def dici(ANO):
         cod = item['Código']
         if ANO !=2020 or cod not in [601,602, 571, 572, 581, 582, 591, 592]:
             csv_path = f'{ANO}dadositens/{cod}.csv'
-            if pd.read_csv(csv_path)['SG_AREA'].iloc[0] == "LC" and ANO == 2022: # ATENÇÃO MUDAR ISTO!
+            if pd.read_csv(csv_path)['SG_AREA'].iloc[0] == "LC" and (ANO in [2022,2021]) : # ATENÇÃO MUDAR ISTO!
             # Ler as colunas específicas do arquivo CSV
                 df = pd.read_csv(csv_path, usecols=['CO_POSICAO', 'CO_ITEM', 'TP_LINGUA'])
                 # item['questoes'] = [{str(row['CO_POSICAO']): int(row['CO_ITEM'])} for index, row in df.iterrows()]
@@ -1032,15 +1037,25 @@ def codigoEnemjson():
     # Salvar as modificações de volta no arquivo combinado.json
     with open(combinado_path, 'w', encoding='utf-8') as file:
         json.dump(combinado_data, file, ensure_ascii=False, indent=4)
-def cilindro_aluno(respostas, cod_prova_aluno, cod_prova_modelo, cod_prova_infos, ANO, n, media:bool=False, ling=""):
-
+def getGabarito(ANO, cod):
+    df = pd.read_csv(str(ANO)+"dadositens/"+str(cod)+".csv")
+    #df = df if ling == '' else {"_ing":df[df['TP_LINGUA'] != 1], "_esp":df[df['TP_LINGUA'] != 0]}[ling]
+    gabarito = ''.join( df.sort_values(by='CO_POSICAO')["TX_GABARITO"].tolist())
+    return gabarito
+def cilindro_aluno(respostas, cod_prova_aluno, cod_prova_modelo, cod_prova_infos, ANO, n, fil:str="", media:bool=False, ling=""):
+    # corrigir
+    # achar melhor opção
+    # traduzir para prova_infos
+    # dici do ano
+    # combinado
+    # 
     df = pd.read_csv(str(ANO)+"dadositens/"+str(cod_prova_aluno)+".csv")
     df = df if ling == '' else {"_ing":df[df['TP_LINGUA'] != 1], "_esp":df[df['TP_LINGUA'] != 0]}[ling]
     resposta_aluno_array = np.array(list(respostas))
     gabarito = ''.join( df.sort_values(by='CO_POSICAO')["TX_GABARITO"].tolist())
     gabarito_array = np.array(list(gabarito))
     acertos = ''.join(map(str,(resposta_aluno_array == gabarito_array).astype(int)))
-    vet = traduzirvet(acertos, cod_prova_aluno, cod_prova_modelo, ANO, n, ling)
+    vet = acertos if cod_prova_aluno == cod_prova_modelo else traduzirvet(acertos, cod_prova_aluno, cod_prova_modelo, ANO, n, ling)
     # print(vet)
     # Convertendo o vetor de acertos para um número decimal
     acertos_decimal = int(''.join(map(str, vet)), 2)
@@ -1059,13 +1074,14 @@ def cilindro_aluno(respostas, cod_prova_aluno, cod_prova_modelo, cod_prova_infos
     with open("scrapping/combinado.json", 'r', encoding='utf-8') as file:
         combinado_data = json.load(file)
     prova_data = next((item for item in dici_data if item["Ano"] == ANO and item["Código"] == cod_prova_infos), None)
-    print(prova_data)
+    # print(prova_data)
     questoes_para_codigo_enem = prova_data["questoes"]
     codigo_enem_para_categoria = {item["Código Enem"]: item["categorias"] for item in combinado_data if "Código Enem" in item and item["Ano"]== ANO}
+    print("codigoenemcategoria")
     print(codigo_enem_para_categoria)
     # Aplicando o mapeamento das sigmóides para as categorias
     estatisticas_df['Categoria'] = estatisticas_df['Sigmóide'].apply(lambda x: codigo_enem_para_categoria.get(questoes_para_codigo_enem.get(str(int(x))), 'Desconhecida'))
-    print(estatisticas_df['Sigmóide'])
+    # print(estatisticas_df['Sigmóide'])
     # Explodindo as categorias após o mapeamento para evitar índices duplicados
     estatisticas_df_exploded = estatisticas_df.explode('Categoria')
 
@@ -1096,14 +1112,17 @@ def cilindro_aluno(respostas, cod_prova_aluno, cod_prova_modelo, cod_prova_infos
         "Química": "CN",
         "Matemática": "MT"
     }
-    sigmóides_de_interesse_CN = ['Biologia', 'Física', 'Química']
-    sigmóides_de_interesse_física = ['Análise Dimensional / Sistemas de Unidades', 'Eletricidade', 'Eletromagnetismo', 'Física Moderna', 'Mecânica', 'Ondulatória', 'Óptica', 'Termologia']
-    sigmóides_de_interesse_química = ['Físico-Química', 'Química Ambiental', 'Química Geral', 'Química Inorgânica', 'Química Orgânica']
-    sigmóides_de_interesse_biologia = ['Bioquímica', 'Botânica (Plantas)', 'Citologia', 'Ecologia', 'Embriologia', 'Evolução', 'Fisiologia', 'Genética', 'Histologia', 'Microrganismos', 'Saúde Humana', 'Zoologia']
-    sigmóides_de_interesse_MT = ['Álgebra', 'Análise de Tabelas e Gráficos', 'Estatística, Prob. e A. Combinatória', 'Geometria', 'Lógica', 'Matemática Básica', 'Matemática Financeira']
-    sigmóides_de_interesse_CH = ['Geografia', 'História', 'Filosofia', 'Sociologia']
-    interesse = sigmóides_de_interesse_CN
-    # df = df[df['Sigmóide'].isin(interesse)]
+    filtro = {
+    "CN" : ['Biologia', 'Física', 'Química'],
+    "física" : ['Análise Dimensional / Sistemas de Unidades', 'Eletricidade', 'Eletromagnetismo', 'Física Moderna', 'Mecânica', 'Ondulatória', 'Óptica', 'Termologia'],
+    "química" : ['Físico-Química', 'Química Ambiental', 'Química Geral', 'Química Inorgânica', 'Química Orgânica'],
+    "biologia" : ['Bioquímica', 'Botânica (Plantas)', 'Citologia', 'Ecologia', 'Embriologia', 'Evolução', 'Fisiologia', 'Genética', 'Histologia', 'Microrganismos', 'Saúde Humana', 'Zoologia'],
+    "MT" : ['Álgebra', 'Análise de Tabelas e Gráficos', 'Estatística, Prob. e A. Combinatória', 'Geometria', 'Lógica', 'Matemática Básica', 'Matemática Financeira'],
+    "CH" : ['Geografia', 'História', 'Filosofia', 'Sociologia']
+    }
+    filtrar = fil != ""
+    if filtrar:
+        df = df[df['Sigmóide'].isin(filtro[fil])]
     df['Sigmóide'] = df['Sigmóide'].apply( lambda x: f"{x}\n{len(estatisticas_df_exploded[(estatisticas_df_exploded['Media'] > 0) & (estatisticas_df_exploded['Categoria'] == x)])}/{len(estatisticas_df_exploded[(estatisticas_df_exploded['Categoria'] == x)])} questões")
     df = df[df['Media'] > 0].sort_values(by='Media', ascending=False)
     # df = df[df['Media'] >= 0]
@@ -1173,17 +1192,59 @@ def cilindro_anos(anos_codigos, ponto, media):
     plt.tight_layout()
     plt.show()
 
-#Lembretes Mel: Microorganismos -> Microbiologia
-# respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos = "DEEBABCDDAADCBADADBBDACBBCAAEBECDDACDAABBEEBD", "", 90, 1088, 1086, 1085 #MEL CN 2022 : 586.7
-# respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos = "CDBBADECAEBBBEAEDDDBECADCACBACEECCBBABDCAEAAC", "", 135, 1077, 1076, 1075 #MEL MT 2022
-# respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos = "ABDAAEDBADBBCDDADCABBBDCDBEDBADAEBADECEEBCCCD", "", 45, 1058, 1056, 1055 #MEL CH 2022
-# respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos   = "ACCEACAECDBEDEDACDAECCCAEACABDEDBADBACABDACCC", "_esp", 0, 1067,1066,1065 #MEL LC 2022 : 549.8
-# df = cilindro_aluno(respostas, cod_prova_aluno, cod_prova_modelo, cod_prova_infos, 2022, n, media=False, ling=ling)
-# anos_codigos = [(2022, 1086), (2021, 910), (2019, 504), (2018, 448)]  # Adicione mais tuplas conforme necessário
+
+# ia(2016, 304)
+# iaLC(2016, 300)
+# criar_cilindro(2016, 296)
+# binarizar(2016, True)
+# c, d = ["TX_RESPOSTAS_", "NU_NOTA_", "CO_PROVA_"], ["LC"]
+# l = [a+b for a in c for b in d]
+# l.append('TP_LINGUA')
+# df = lerc(str(2016)+"/DADOS/MICRODADOS_ENEM_"+str(2016)+".csv", *l)
+
+# anos_codigos = [(2022, 1086)]  # Adicione mais tuplas conforme necessário
+# anos_codigos = [(2017, 392)]
 # ponto = 586.7
 # media = False
 # cilindro_anos(anos_codigos, ponto, media)
+# grafico_cilindro_3d(2022, 1086, classificar)
+# calcular_pesos_ANO(2023)
+# print('Pesos CH CN MT com sucesso!')
+# calcular_pesos_ANO(2023, True)
+# print('Pesos LC com sucesso!')
+
+# RESPOSTAS DA MEL PROVA AZUL 2021 ENEM
+# PROVA DE LC 2021 AZUL
+# CAEAABDCDEDDCEEBADDDABBBADECCECDCBDBABACDBDDC
+# PROVA DE CH 2021 AZUL
+# BADCCADDCEEBABBAEDCABEEBCAEAAEDAAAEBBABBABEBB
+# PROVA DE CN 2021 AZUL
+# EDEDABEEEDCBACEBCDABBEBCCCBAEAACDCBCEBBDBABCA
+# PROVA DE MT 2021 AZUL
+# ECAEBADDDCECCBCCDBCDAEADDEDBBEBBDDBEDCCABDCAB
 if __name__ == '__main__':
     t = time()
-    
+    # Lembretes Mel: Microorganismos -> Microbiologia
+    # respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos = "DEEBABCDDAADCBADADBBDACBBCAAEBECDDACDAABBEEBD", "", 90, 1088, 1086, 1085 #MEL CN 2022 : 586.7
+    # respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos = "CDBBADECAEBBBEAEDDDBECADCACBACEECCBBABDCAEAAC", "", 135, 1077, 1076, 1075 #MEL MT 2022
+    # respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos = "ABDAAEDBADBBCDDADCABBBDCDBEDBADAEBADECEEBCCCD", "", 45, 1058, 1056, 1055 #MEL CH 2022
+    # respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos   = "ACCEACAECDBEDEDACDAECCCAEACABDEDBADBACABDACCC", "_esp", 0, 1067,1066,1065 #MEL LC 2022 : 549.8
+    # respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos = "DEEBABCDDAADCBADADBBDACBBCAAEBECDDACDAABBEEBD", "", 90, 1088, 1086, 1085 #MEL CN 2022 : 586.7
+    # respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos = "CDBBADECAEBBBEAEDDDBECADCACBACEECCBBABDCAEAAC", "", 135, 1077, 1076, 1075 #MEL MT 2022
+    # respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos = "ABDAAEDBADBBCDDADCABBBDCDBEDBADAEBADECEEBCCCD", "", 45, 1058, 1056, 1055 #MEL CH 2022
+    respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos   = "CAEAABDCDEDDCEEBADDDABBBADECCECDCBDBABACDBDDC", "_esp", 0, 891,890,889 #MEL teste LC 2021 (aluno, amarela, azul)
+    df = cilindro_aluno(respostas, cod_prova_aluno, cod_prova_modelo, cod_prova_infos, 2021, n, media=False, ling=ling)
+    # fil, respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos = "CN", "DEEBABCDDAADCBADADBBDACBBCAAEBECDDACDAABBEEBD", "", 90, 1088, 1086, 1085 #MEL CN 2022 : 586.7
+    # respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos = "CDBBADECAEBBBEAEDDDBECADCACBACEECCBBABDCAEAAC", "", 135, 1077, 1076, 1075 #MEL MT 2022
+    # respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos = "ABDAAEDBADBBCDDADCABBBDCDBEDBADAEBADECEEBCCCD", "", 45, 1058, 1056, 1055 #MEL CH 2022
+    # respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos = "ACCEACAECDBEDEDACDAECCCAEACABDED+BADBACABDACCC", "_esp", 0, 1067,1066,1065 #MEL LC 2022 : 549.8
+    # respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos = "ECADAADACCDDDBECACEDDEECBBBCEEECDADCDDAAACDAA", "", 45, 295 ,296,295 #MEL LC 2022 
+    # fil, respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos = "CN", "BCAABCEDCCBEDEBCDBBEDDBAEDCDAECDDBEBBDACCEEEE", "", 90, 291 ,292,291 #MEL LC 2022 
+    # respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos = "CAACCEEBEECEDBDDCBADEADCECBBACBDADAAEBDDADCED", "", 135, 304 ,304,303 #MEL LC 2022 
+    # respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos = "CCBBCDAAEBEBDAABACDDBBDCBBADAEBCAECDBDCDDEEBB", "_esp", 0, 300 ,300,299 #MEL LC 2022 
+    # df = cilindro_aluno(respostas, cod_prova_aluno, cod_prova_modelo, cod_prova_infos, 2022, n, fil, media=False, ling=ling)
+    # iaLC(2021, 890)
+    # criar_cilindro(2016, 296)
+    # binarizar(2021, True)
+    # dici(2021)
     print(time()-t)
