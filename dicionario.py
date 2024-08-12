@@ -9,15 +9,23 @@ import csv
 import os
 import gc
 os.environ['PYDEVD_DISABLE_FILE_VALIDATION'] = '1'
-if True:
+if False:
     from sklearn.model_selection import train_test_split
     from sklearn.linear_model import LinearRegression
     from tensorflow.keras.models import load_model
     from tensorflow.keras.models import Sequential
+    from tensorflow.keras import backend as K
     from tensorflow.keras.layers import Dense
+    #from tensorflow.keras.optimizers import RMSProp
+    from tensorflow.keras.optimizers import SGD
+def custom_loss(y_true, y_pred):
+    # Peso que aumenta com base na nota verdadeira
+    weights = y_true**2
+    return K.mean(weights * K.abs(y_true - y_pred), axis=-1)
 def ia(ANO, cod, LC_only:bool=False, dfi:pd.DataFrame()=pd.DataFrame, ling:str="", epc=20):
     df = pd.read_csv(f"C:/Users/Marce/Codes/Frezza Fisica/"+str(ANO)+"dados/"+str(cod)+".0.csv") if not LC_only else dfi
     q = 45
+    df = df[df[df.columns[1]] >600]
     df[df.columns[1]] = df[df.columns[1]] / 1000 
     df['Acertos_Binario'] = df['Acertos_Decimal'].apply(lambda x: format(x, '045b')) 
     for i in range(q):
@@ -25,12 +33,13 @@ def ia(ANO, cod, LC_only:bool=False, dfi:pd.DataFrame()=pd.DataFrame, ling:str="
     X = df[[f'bit_{i}' for i in range(q)]]
     y = df[df.columns[1]]
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+        
     model = Sequential([
         Dense(q, activation='relu', input_shape=(q,)),
         Dense(q, activation='relu'),
         Dense(1, activation='sigmoid')  # Saída entre 0 e 1
     ])
-    model.compile(optimizer='adam', loss='mean_absolute_error')
+    model.compile(optimizer='adam', loss='mae')
     model.fit(X_train, y_train, epochs=epc, validation_split=0.1)
     loss = model.evaluate(X_test, y_test)
     print(f'Loss: {loss}')
@@ -324,10 +333,13 @@ def mostrar_acuracia(n, ANO, cod, cod_i, p:bool=False, min=0):
     # min = df[df.columns[1]].min()
     # min = 0
     df = df.sample(n)  # Seleciona aleatoriamente 100 linhas
-    df['Mapeada'] = df['Acertos_Decimal'].apply(lambda x: mapear_resp(x,ANO,cod, cod_i))
+    df['Mapeada'] = df['Acertos_Decimal'] #.apply(lambda x: mapear_resp(x,ANO,cod, cod_i))
     # df['Approx_Nota'] = df['Mapeada'].apply(notaProx)
-    df['NotaAprox'] = df["Mapeada"].apply(lambda x: aproxNota(x, ANO, cod, min))
+    #df['NotaAprox'] = df["Mapeada"].apply(lambda x: prever_nota_com_ialote(x, ANO, cod))
+    acertos_decimals = df['Acertos_Decimal'].tolist()
 
+    # Fazer previsões em lote
+    df['NotaAprox'] = prever_nota_com_ialote(acertos_decimals, ANO, cod)
     # Selecting a sample of 2000 points for plotting to avoid overplotting
     #plot_sample = df #.sample(n=2000, random_state=42)
     
@@ -488,22 +500,26 @@ def prever_nota_com_ia(acertos_decimal, ANO, cod, ling=""):
     nota_prevista = prediction.flatten()[0] * 1000  # Exemplo de desnormalização
     
     return nota_prevista
-def prever_nota_com_ialote(lote, ANO, cod):
+def prever_nota_com_ialote(acertos_decimals, ANO, cod):
     # Caminho para o diretório do modelo salvo
     model_directory = f"C:/Users/Marce/Codes/Frezza Fisica/models/{ANO}_{cod}"
     # Carregar o modelo
     modelo_carregado = load_model(model_directory)
     
     # Converter acertos decimais para binário e criar uma matriz para a previsão
-    # acertos_binario = format(int(acertos_decimal), '045b')  # Asegura-se de que o valor esteja em binário com 45 bits
-    acertos_binario_array = np.array([lote])  # Transforma em array do numpy
-
-    # Fazer a previsão
-    prediction = modelo_carregado.predict(acertos_binario_array)
+    acertos_binario_arrays = []
+    for acertos_decimal in acertos_decimals:
+        acertos_binario = format(int(acertos_decimal), '045b')  # Assegura-se de que o valor esteja em binário com 45 bits
+        acertos_binario_array = [int(bit) for bit in acertos_binario] # Transforma em lista de bits
+        acertos_binario_arrays.append(acertos_binario_array)
     
-    # Aqui, você pode ajustar a previsão conforme necessário, por exemplo, desnormalizando o valor se aplicável
-    # Se você normalizou as notas durante o treinamento, faça a conversão inversa aqui
-    notas_previstas = [i * 1000 for i in prediction.flatten()] # Exemplo de desnormalização
+    acertos_binario_matrix = np.array(acertos_binario_arrays)
+    
+    # Fazer a previsão em lote
+    predictions = modelo_carregado.predict(acertos_binario_matrix)
+    
+    # Ajustar a previsão conforme necessário (desnormalização, se aplicável)
+    notas_previstas = predictions.flatten() * 1000  # Exemplo de desnormalização
     
     return notas_previstas
 def calcular_pesos_ia(ANO, cod):
@@ -903,13 +919,15 @@ def dici(ANO):
             csv_path = f'{ANO}dadositens/{cod}.csv'
             if pd.read_csv(csv_path)['SG_AREA'].iloc[0] == "LC" and (ANO in [2022,2021]) : # ATENÇÃO MUDAR ISTO!
             # Ler as colunas específicas do arquivo CSV
-                df = pd.read_csv(csv_path, usecols=['CO_POSICAO', 'CO_ITEM', 'TP_LINGUA'])
+                df = pd.read_csv(csv_path, usecols=['CO_POSICAO', 'CO_ITEM', 'TP_LINGUA', 'TX_GABARITO'])
                 # item['questoes'] = [{str(row['CO_POSICAO']): int(row['CO_ITEM'])} for index, row in df.iterrows()]
                 item['questoes'] = {str(int(row['CO_POSICAO'])+{"0.0":0, "1.0":45, "nan":0}[str(row['TP_LINGUA'])]): int(row['CO_ITEM']) for index, row in df.iterrows()}
+                item['respostas'] = {str(int(row['CO_POSICAO'])+{"0.0":0, "1.0":45, "nan":0}[str(row['TP_LINGUA'])]): row['TX_GABARITO'] for index, row in df.iterrows()}
             else:
-                df = pd.read_csv(csv_path, usecols=['CO_POSICAO', 'CO_ITEM'])
+                df = pd.read_csv(csv_path, usecols=['CO_POSICAO', 'CO_ITEM', 'TX_GABARITO'])
                 # item['questoes'] = [{str(row['CO_POSICAO']): int(row['CO_ITEM'])} for index, row in df.iterrows()]
                 item['questoes'] = {str(row['CO_POSICAO']): int(row['CO_ITEM']) for index, row in df.iterrows()}
+                item['respostas'] = {str(row['CO_POSICAO']): row['TX_GABARITO'] for index, row in df.iterrows()}
 
 
     # Salvar as modificações de volta ao arquivo JSON
@@ -1048,7 +1066,6 @@ def cilindro_aluno(respostas, cod_prova_aluno, cod_prova_modelo, cod_prova_infos
     # traduzir para prova_infos
     # dici do ano
     # combinado
-    # 
     df = pd.read_csv(str(ANO)+"dadositens/"+str(cod_prova_aluno)+".csv")
     df = df if ling == '' else {"_ing":df[df['TP_LINGUA'] != 1], "_esp":df[df['TP_LINGUA'] != 0]}[ling]
     resposta_aluno_array = np.array(list(respostas))
@@ -1191,49 +1208,110 @@ def cilindro_anos(anos_codigos, ponto, media):
     plt.xticks(anos)  # Ajustar os ticks do eixo X para os anos
     plt.tight_layout()
     plt.show()
+def analiseAcertos():
+    # Carregar o arquivo CSV
+    df = pd.read_csv('2018dados/448.0.csv')
 
+    # Função para converter o decimal em binário e contar os acertos
+    def contar_acertos(decimal):
+        binario = bin(decimal)[2:].zfill(45)
+        return binario.count('1')
 
-# ia(2016, 304)
-# iaLC(2016, 300)
-# criar_cilindro(2016, 296)
-# binarizar(2016, True)
-# c, d = ["TX_RESPOSTAS_", "NU_NOTA_", "CO_PROVA_"], ["LC"]
-# l = [a+b for a in c for b in d]
-# l.append('TP_LINGUA')
-# df = lerc(str(2016)+"/DADOS/MICRODADOS_ENEM_"+str(2016)+".csv", *l)
+    # Aplicar a função para contar acertos em cada aluno
+    df['Acertos'] = df['Acertos_Decimal'].apply(contar_acertos)
 
-# anos_codigos = [(2022, 1086)]  # Adicione mais tuplas conforme necessário
-# anos_codigos = [(2017, 392)]
-# ponto = 586.7
-# media = False
-# cilindro_anos(anos_codigos, ponto, media)
-# grafico_cilindro_3d(2022, 1086, classificar)
-# calcular_pesos_ANO(2023)
-# print('Pesos CH CN MT com sucesso!')
-# calcular_pesos_ANO(2023, True)
-# print('Pesos LC com sucesso!')
+    # Filtrar alunos que acertaram exatamente 40 questões
+    df_40_acertos = df[df['Acertos'] == 40].copy()
 
-# RESPOSTAS DA MEL PROVA AZUL 2021 ENEM
-# PROVA DE LC 2021 AZUL
-# CAEAABDCDEDDCEEBADDDABBBADECCECDCBDBABACDBDDC
-# PROVA DE CH 2021 AZUL
-# BADCCADDCEEBABBAEDCABEEBCAEAAEDAAAEBBABBABEBB
-# PROVA DE CN 2021 AZUL
-# EDEDABEEEDCBACEBCDABBEBCCCBAEAACDCBCEBBDBABCA
-# PROVA DE MT 2021 AZUL
-# ECAEBADDDCECCBCCDBCDAEADDEDBBEBBDDBEDCCABDCAB
+    # Calcular as estatísticas
+    media = df_40_acertos['NU_NOTA_CN'].mean()
+    mediana = df_40_acertos['NU_NOTA_CN'].median()
+    moda = df_40_acertos['NU_NOTA_CN'].mode()[0]
+    desvio_padrao = df_40_acertos['NU_NOTA_CN'].std()
+
+    # Nota mais alta e mais baixa
+    nota_maxima = df_40_acertos['NU_NOTA_CN'].max()
+    nota_minima = df_40_acertos['NU_NOTA_CN'].min()
+
+    # Contar o número de alunos
+    numero_alunos = df_40_acertos.shape[0]
+
+    # Exibir os resultados
+    print(f"Número de alunos que acertaram exatamente 40 questões: {numero_alunos}")
+    print(f"Média das notas: {media}")
+    print(f"Mediana das notas: {mediana}")
+    print(f"Moda das notas: {moda}")
+    print(f"Desvio padrão das notas: {desvio_padrao}")
+    print(f"Nota mais alta: {nota_maxima}")
+    print(f"Nota mais baixa: {nota_minima}")
+
+    # Aplicar a função de previsão de nota e calcular a diferença
+    df_40_acertos['Nota_Prevista'] = df_40_acertos.apply(
+        lambda row: prever_nota_com_ia(row['Acertos_Decimal'], ANO=2018, cod=448), axis=1)
+    df_40_acertos['Diferenca'] = df_40_acertos['Nota_Prevista'] - df_40_acertos['NU_NOTA_CN']
+
+    # Calcular as estatísticas das diferenças
+    maior_diferenca = df_40_acertos['Diferenca'].min()
+    media_diferenca = df_40_acertos['Diferenca'].mean()
+    desvio_padrao_diferenca = df_40_acertos['Diferenca'].std()
+
+    # Exibir os resultados
+    print(f"Maior diferença de nota: {maior_diferenca}")
+    print(f"Média das diferenças de nota: {media_diferenca}")
+    print(f"Desvio padrão das diferenças de nota: {desvio_padrao_diferenca}")
+def makeR(ANO, cod):
+    df = pd.read_csv(f"C:/Users/Marce/Codes/Frezza Fisica/"+str(ANO)+"dadositens/"+str(cod)+".csv")
+    df.sort_values(by='CO_POSICAO', inplace=True)
+    df.to_csv(f"C:/Users/Marce/OneDrive/Documentos/Rarquivop.csv", index=False)
+    df = criar_rarquivo(ANO, cod)
+    df.to_csv(f"C:/Users/Marce/OneDrive/Documentos/Rarquivo.csv", index=False)
+if False:
+    # ia(2016, 304)
+    # iaLC(2016, 300)
+    # criar_cilindro(2016, 296)
+    # binarizar(2016, True)
+    # c, d = ["TX_RESPOSTAS_", "NU_NOTA_", "CO_PROVA_"], ["LC"]
+    # l = [a+b for a in c for b in d]
+    # l.append('TP_LINGUA')
+    # df = lerc(str(2016)+"/DADOS/MICRODADOS_ENEM_"+str(2016)+".csv", *l)
+
+    # anos_codigos = [(2022, 1086)]  # Adicione mais tuplas conforme necessário
+    # anos_codigos = [(2017, 392)]
+    # ponto = 586.7
+    # media = False
+    # cilindro_anos(anos_codigos, ponto, media)
+    # grafico_cilindro_3d(2022, 1086, classificar)
+    # calcular_pesos_ANO(2023)
+    # print('Pesos CH CN MT com sucesso!')
+    # calcular_pesos_ANO(2023, True)
+    # print('Pesos LC com sucesso!')
+
+    # RESPOSTAS DA MEL PROVA AZUL 2021 ENEM
+    # PROVA DE LC 2021 AZUL
+    # CAEAABDCDEDDCEEBADDDABBBADECCECDCBDBABACDBDDC
+    # PROVA DE CH 2021 AZUL
+    # BADCCADDCEEBABBAEDCABEEBCAEAAEDAAAEBBABBABEBB
+    # PROVA DE CN 2021 AZUL
+    # EDEDABEEEDCBACEBCDABBEBCCCBAEAACDCBCEBBDBABCA
+    # PROVA DE MT 2021 AZUL
+    # ECAEBADDDCECCBCCDBCDAEADDEDBBEBBDDBEDCCABDCAB
+    pass
 if __name__ == '__main__':
     t = time()
+    ANO = 2018
+    cod = 448
+    makeR(ANO, cod)
     # Lembretes Mel: Microorganismos -> Microbiologia
-    # respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos = "DEEBABCDDAADCBADADBBDACBBCAAEBECDDACDAABBEEBD", "", 90, 1088, 1086, 1085 #MEL CN 2022 : 586.7
+    # respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos = "EACDDEBEACCCDABCEECBBCCAEBEDABEADBADDCBDDAAEB", "", 90, 1088, 1086, 1085 #MEL CN 2022 : 586.7
     # respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos = "CDBBADECAEBBBEAEDDDBECADCACBACEECCBBABDCAEAAC", "", 135, 1077, 1076, 1075 #MEL MT 2022
     # respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos = "ABDAAEDBADBBCDDADCABBBDCDBEDBADAEBADECEEBCCCD", "", 45, 1058, 1056, 1055 #MEL CH 2022
     # respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos   = "ACCEACAECDBEDEDACDAECCCAEACABDEDBADBACABDACCC", "_esp", 0, 1067,1066,1065 #MEL LC 2022 : 549.8
     # respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos = "DEEBABCDDAADCBADADBBDACBBCAAEBECDDACDAABBEEBD", "", 90, 1088, 1086, 1085 #MEL CN 2022 : 586.7
     # respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos = "CDBBADECAEBBBEAEDDDBECADCACBACEECCBBABDCAEAAC", "", 135, 1077, 1076, 1075 #MEL MT 2022
     # respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos = "ABDAAEDBADBBCDDADCABBBDCDBEDBADAEBADECEEBCCCD", "", 45, 1058, 1056, 1055 #MEL CH 2022
-    respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos   = "CAEAABDCDEDDCEEBADDDABBBADECCECDCBDBABACDBDDC", "_esp", 0, 891,890,889 #MEL teste LC 2021 (aluno, amarela, azul)
-    df = cilindro_aluno(respostas, cod_prova_aluno, cod_prova_modelo, cod_prova_infos, 2021, n, media=False, ling=ling)
+    # respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos   = "CAEAABDCDEDDCEEBADDDABBBADECCECDCBDBABACDBDDC", "_esp", 0, 891,890,889 #MEL teste LC 2021 (aluno, amarela, azul)
+    # df = cilindro_aluno(respostas, cod_prova_aluno, cod_prova_modelo, cod_prova_infos, 2022, n, media=False, ling=ling)
+    # print(getGabarito(2022, 1088))
     # fil, respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos = "CN", "DEEBABCDDAADCBADADBBDACBBCAAEBECDDACDAABBEEBD", "", 90, 1088, 1086, 1085 #MEL CN 2022 : 586.7
     # respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos = "CDBBADECAEBBBEAEDDDBECADCACBACEECCBBABDCAEAAC", "", 135, 1077, 1076, 1075 #MEL MT 2022
     # respostas, ling, n,cod_prova_aluno,cod_prova_modelo,cod_prova_infos = "ABDAAEDBADBBCDDADCABBBDCDBEDBADAEBADECEEBCCCD", "", 45, 1058, 1056, 1055 #MEL CH 2022
@@ -1247,4 +1325,8 @@ if __name__ == '__main__':
     # criar_cilindro(2016, 296)
     # binarizar(2021, True)
     # dici(2021)
+    # ia(2021, 910)
+    # analiseAcertos()
+    # print(prever_nota_com_ia(35184371957421, 2018, 448))
+    # mostrar_acuracia(200000, 2021, 910, 910, p=True)
     print(time()-t)
